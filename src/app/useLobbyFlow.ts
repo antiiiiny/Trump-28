@@ -1,7 +1,9 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import type { Room } from '@colyseus/sdk';
 import type { LobbyRoomState } from '../../shared/colyseus/lobby';
 import { createLobbyRoom, joinLobbyRoom, sendLeaveRoom, sendReadyUp, sendStartGame } from '../network/colyseus/lobby';
+import { reconnectToRoom } from '../network/colyseus/reconnect';
+import { joinGameRoom } from '../network/colyseus/game';
 
 export type AppScreen = 'home' | 'room' | 'lobby' | 'game' | 'results';
 
@@ -14,6 +16,7 @@ export interface FlowOverlay {
 export interface RoomFlowState {
   screen: AppScreen;
   room: Room<LobbyRoomState> | null;
+  myHand: string[];
   busy: boolean;
   overlay: FlowOverlay | null;
   goToScreen: (screen: AppScreen) => void;
@@ -58,21 +61,60 @@ function normalizeRoomCode(roomCode: string) {
 export function useLobbyFlow(): RoomFlowState {
   const [screen, setScreen] = useState<AppScreen>('home');
   const [room, setRoom] = useState<Room<LobbyRoomState> | null>(null);
+  const [myHand, setMyHand] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [overlay, setOverlay] = useState<FlowOverlay | null>(null);
   const [, forceRender] = useState(0);
   const intentionalLeaveRef = useRef(false);
+  const currentRoomRef = useRef<Room<LobbyRoomState> | null>(null);
+  const transitioningToGameRef = useRef(false);
 
   const attachRoom = (nextRoom: Room<LobbyRoomState>) => {
+    currentRoomRef.current = nextRoom;
     setRoom(nextRoom);
     intentionalLeaveRef.current = false;
+    transitioningToGameRef.current = false;
 
     nextRoom.onStateChange((state) => {
       forceRender((value) => value + 1);
 
+      if (
+        state.phase === 'playing'
+        && state.gameRoomId
+        && nextRoom.id !== state.gameRoomId
+        && !transitioningToGameRef.current
+      ) {
+        transitioningToGameRef.current = true;
+
+        const localPlayer = state.players.find((player) => player.playerId === nextRoom.sessionId);
+        if (localPlayer) {
+          void (async () => {
+            try {
+              const gameRoom = await joinGameRoom(state.gameRoomId, localPlayer.seat, localPlayer.playerId, localPlayer.name);
+              intentionalLeaveRef.current = true;
+              nextRoom.leave();
+              attachRoom(gameRoom);
+              setScreen('game');
+            } catch (error) {
+              console.error('Failed to join game room', error);
+              setOverlay({
+                title: 'Game Join Failed',
+                message: 'Unable to enter the game room.',
+                actionLabel: 'Dismiss',
+              });
+              transitioningToGameRef.current = false;
+            }
+          })();
+        }
+      }
+
       if (state.phase === 'playing') {
         setScreen('game');
       }
+    });
+
+    nextRoom.onMessage('privateHand', (message: { playerId: string; cards: Array<{ code: string }> }) => {
+      setMyHand(message.cards.map((card) => card.code));
     });
 
     nextRoom.onLeave((code, reason) => {
@@ -88,6 +130,8 @@ export function useLobbyFlow(): RoomFlowState {
       });
       setScreen('room');
       setRoom(null);
+      currentRoomRef.current = null;
+      setMyHand([]);
     });
 
     nextRoom.onError((_code, message) => {
@@ -98,6 +142,39 @@ export function useLobbyFlow(): RoomFlowState {
       });
     });
   };
+
+  // attempt silent reconnect on mount if session data exists
+  useEffect(() => {
+    (async () => {
+      try {
+        const raw = sessionStorage.getItem('colyseus_session');
+        if (!raw) return;
+        const parsed = JSON.parse(raw) as { roomId?: string; sessionId?: string } | string;
+        let roomId: string | undefined;
+        let sessionId: string | undefined;
+
+        if (typeof parsed === 'string') {
+          sessionId = parsed as string;
+        } else {
+          roomId = parsed.roomId;
+          sessionId = parsed.sessionId;
+        }
+
+        if (!roomId || !sessionId) return;
+
+        const rejoined = await reconnectToRoom(roomId, sessionId);
+        if (rejoined) {
+          attachRoom(rejoined);
+          setScreen('lobby');
+        } else {
+          // failed to reconnect: clear stored session
+          sessionStorage.removeItem('colyseus_session');
+        }
+      } catch (err) {
+        console.warn('Silent reconnect attempt failed', err);
+      }
+    })();
+  }, []);
 
   const goToScreen = (nextScreen: AppScreen) => {
     setScreen(nextScreen);
@@ -184,6 +261,13 @@ export function useLobbyFlow(): RoomFlowState {
     sendLeaveRoom(room);
     room.leave();
     setRoom(null);
+    currentRoomRef.current = null;
+    setMyHand([]);
+    try {
+      sessionStorage.removeItem('colyseus_session');
+    } catch (err) {
+      // ignore
+    }
     setScreen('room');
   };
 
@@ -194,6 +278,7 @@ export function useLobbyFlow(): RoomFlowState {
   return {
     screen,
     room,
+    myHand,
     busy,
     overlay,
     goToScreen,

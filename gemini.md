@@ -112,3 +112,11 @@ If testing on another device on the same Wi-Fi, the Vite dev server should be st
 - The repo builds successfully.
 - The server process starts successfully.
 - The room creation handshake still fails and needs the next fix in the Colyseus server or matchmaker path.
+## Stage 4 completion notes
+
+- Lobby reconnect handling is implemented with `allowReconnection`, deterministic timeout cleanup, and typed error responses.
+- A `game` room now exists on the server and is registered in `server/index.ts`.
+- Lobby start now creates a game room and exposes `gameRoomId` in synced state for the client handoff.
+- Private server delivery helpers exist for hand snapshots, trump reveal, and public round snapshots.
+- The client now has a game-room join helper and stores the active room session in `sessionStorage`.
+- The game screen now consumes live room state and private hand data when available.

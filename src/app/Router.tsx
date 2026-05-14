@@ -10,6 +10,7 @@ export function Router() {
   const {
     screen,
     room,
+    myHand,
     busy,
     overlay,
     goToScreen,
@@ -52,7 +53,7 @@ export function Router() {
           />
         );
       case 'game':
-        return <GameTable onNavigate={(nextScreen) => goToScreen(nextScreen)} />;
+        return <GameTable room={room} myHand={myHand} onNavigate={(nextScreen) => goToScreen(nextScreen)} />;
       case 'results':
         return <Results onNavigate={(nextScreen) => goToScreen(nextScreen)} />;
       default:

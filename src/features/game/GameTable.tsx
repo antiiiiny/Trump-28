@@ -1,5 +1,7 @@
 import { useState } from 'react';
+import type { Room } from '@colyseus/sdk';
 import type { GamePhase, TeamId } from '../../../shared';
+import type { LobbyRoomState } from '../../../shared/colyseus/lobby';
 import { OpponentArea } from '../../components/table/OpponentArea';
 import { TrickArea } from '../../components/table/TrickArea';
 import { PlayerHand } from '../../components/table/PlayerHand';
@@ -10,6 +12,8 @@ import styles from './GameTable.module.css';
 
 interface GameTableProps {
   onNavigate?: (screen: 'home' | 'results' | 'lobby') => void;
+  room?: Room<LobbyRoomState> | null;
+  myHand?: string[];
 }
 
 const currentPhase: GamePhase = 'biddingRound1';
@@ -23,9 +27,15 @@ const MOCK_TRICK_CARDS = [
 ];
 const MOCK_TEAM_SCORES = { A: 14, B: 11 };
 
-export function GameTable({ onNavigate }: GameTableProps) {
+export function GameTable({ onNavigate, room, myHand = [] }: GameTableProps) {
   const [selectedCard, setSelectedCard] = useState<string>();
   const [selectedBid] = useState<number | null>(20);
+  const roomState = room?.state;
+  const teamScores = roomState
+    ? { A: roomState.teamAScore, B: roomState.teamBScore }
+    : MOCK_TEAM_SCORES;
+  const handCards = myHand.length > 0 ? myHand : MOCK_HAND;
+  const activePlayerLabel = roomState?.players.find((player) => player.playerId === roomState.activePlayerId)?.name || 'Teammate';
 
   return (
     <div className={styles.container}>
@@ -58,8 +68,8 @@ export function GameTable({ onNavigate }: GameTableProps) {
 
         <div className={styles.bottomArea}>
           <div className={styles.statusRow}>
-            <ScorePanel teamScores={MOCK_TEAM_SCORES} />
-            <TurnIndicator activePlayer="Teammate" isYourTurn={false} />
+            <ScorePanel teamScores={teamScores} />
+            <TurnIndicator activePlayer={activePlayerLabel} isYourTurn={false} />
             {currentPhase === 'biddingRound1' || currentPhase === 'biddingRound2' ? (
               <BidPanel
                 currentBid={18}
@@ -79,7 +89,7 @@ export function GameTable({ onNavigate }: GameTableProps) {
           </div>
 
           <PlayerHand
-            cards={MOCK_HAND}
+            cards={handCards}
             playerName="You"
             teamLabel={`Team ${localTeam}`}
             selectedCardCode={selectedCard}
