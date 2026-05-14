@@ -1,0 +1,114 @@
+# Gemini Handoff
+
+## Project
+
+Trump 28 is a browser-first multiplayer card game for 28, implemented with React, TypeScript, Vite, Colyseus, and CSS modules.
+
+## Goal of the repo
+
+The repo is being built in stages:
+
+1. Stage 1: shared scaffold and canonical card/shared model setup.
+2. Stage 2: mock UI and visual layout for the game flow.
+3. Stage 3: real Colyseus room creation, room-code join, lobby syncing, ready states, and host start gating.
+
+The game table is intentionally still a stub while Stage 3 is being finished.
+
+## What happened so far
+
+### Initial scaffold
+
+- The project started as a Vite React TypeScript app.
+- Shared enums and models were added under `shared/`.
+- `shared/index.ts` was created as a barrel export.
+- `src/components/cards/PlayingCardView.tsx` was added as the only place where canonical card codes are converted into `@letele/playing-cards` library keys.
+- `.github/copilot-instructions.md` was updated with the project rules and stage notes.
+
+### Stage 2 mock UI
+
+- A mock routing and screen flow were created.
+- Static screens were added for home, create/join room, lobby, game table, results, and reconnect overlay.
+- Layout and visual tokens were introduced in CSS modules only.
+- The table UI was built with separate components for opponent areas, trick area, player hand, bid panel, score panel, and turn indicator.
+- Several visual bugs were fixed during that phase:
+  - The trick-area card was reduced so it no longer dominated the center.
+  - The table height was constrained so the player hand stayed visible.
+  - Score spacing was corrected so labels did not collapse together.
+
+### Scope correction to 28 / 4-player
+
+- The project was migrated from earlier 108 / 2-player assumptions to 28 / 4-player teams.
+- Shared types were expanded for 4 players, teams, bids, tricks, rounds, games, and room state.
+- The mock UI was updated to match the 4-player layout and team-based flow.
+
+### Stage 3 Colyseus wiring
+
+- Colyseus runtime dependencies were installed.
+- Stage 3 instructions were appended to `.github/copilot-instructions.md`.
+- Shared protocol schemas were added in `shared/protocol/lobby.ts`.
+- Shared Colyseus lobby schema classes were added in `shared/colyseus/lobby.ts`.
+- A Colyseus room was implemented in `server/rooms/LobbyRoom.ts`.
+- A server bootstrap was added in `server/index.ts`.
+- Client Colyseus helpers were added in `src/network/colyseus/client.ts` and `src/network/colyseus/lobby.ts`.
+- The room flow hook was added in `src/app/useLobbyFlow.ts`.
+- The router and room screens were rewired to use real room state.
+- The lobby stylesheet was corrupted during patching and then recreated cleanly.
+
+## Important implementation details
+
+- Room codes are intended to be 4 uppercase characters.
+- Seats are assigned by join order and are permanent for the life of the room.
+- Teams are fixed by seat: seats 0 and 2 are Team A, seats 1 and 3 are Team B.
+- Lobby state is server-authoritative and should be rendered directly from Colyseus state.
+- The game table is still a placeholder.
+
+## Debugging history
+
+### Build and runtime issues that were resolved
+
+- TypeScript decorators for Colyseus schema required `experimentalDecorators: true` in the app and node tsconfigs.
+- The installed `colyseus.js` version did not expose `Room.reconnection`, `onDrop`, or `onReconnect`, so the client flow was simplified to use `onLeave` and `onError`.
+- The server-side `Room` generic had to be typed as room options/state shape rather than state directly.
+- `npm run build` now passes.
+- `npm run server` now starts successfully.
+
+### Current failure being debugged
+
+The lobby still fails during room creation / join handshake.
+
+Observed errors over time:
+
+- Client-side seat-reservation handshake error:
+  - `TypeError: Cannot read properties of undefined (reading 'name')`
+- Network response from the create endpoint:
+  - `POST /matchmake/create/lobby` returned `526 unknown`
+- Join-by-id path has returned `room "AFSF" not found` for a room code join attempt.
+
+Current evidence suggests the problem is in the Colyseus matchmaker / seat-reservation response path, not in the lobby form input validation.
+
+## Commands that matter
+
+```bash
+npm run server
+npm run dev
+npm run build
+```
+
+If testing on another device on the same Wi-Fi, the Vite dev server should be started with host exposure.
+
+## Files worth knowing first
+
+- `.github/copilot-instructions.md`
+- `README.md`
+- `src/app/useLobbyFlow.ts`
+- `src/network/colyseus/lobby.ts`
+- `server/rooms/LobbyRoom.ts`
+- `server/index.ts`
+- `shared/colyseus/lobby.ts`
+- `shared/protocol/lobby.ts`
+
+## Known status at the time of writing
+
+- The repo builds successfully.
+- The server process starts successfully.
+- The room creation handshake still fails and needs the next fix in the Colyseus server or matchmaker path.

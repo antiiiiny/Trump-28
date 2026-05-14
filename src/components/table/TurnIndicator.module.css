@@ -1,0 +1,39 @@
+.container {
+  background: var(--color-panel);
+  border-radius: var(--radius-md);
+  padding: var(--space-lg);
+  box-shadow: var(--shadow-md);
+  text-align: center;
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--font-size-md);
+  position: relative;
+  min-width: 160px;
+}
+
+.container.active {
+  background: var(--color-button-primary);
+  color: white;
+}
+
+.pulse {
+  position: absolute;
+  top: 50%;
+  right: var(--space-lg);
+  width: 12px;
+  height: 12px;
+  background: var(--color-success);
+  border-radius: 50%;
+  transform: translateY(-50%);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: translateY(-50%) scale(1);
+  }
+  50% {
+    opacity: 0.5;
+    transform: translateY(-50%) scale(1.2);
+  }
+}

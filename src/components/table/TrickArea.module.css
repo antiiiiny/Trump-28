@@ -1,0 +1,75 @@
+.container {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 260px;
+  padding: var(--space-md) 0 var(--space-lg);
+}
+
+.content {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.empty {
+  color: rgba(255, 255, 255, 0.6);
+  font-size: var(--font-size-md);
+  margin: 0;
+}
+
+.stage {
+  position: relative;
+  width: min(100%, 420px);
+  aspect-ratio: 1;
+}
+
+.cardWrapper {
+  position: absolute;
+  width: 74px;
+  height: 112px;
+}
+
+.card {
+  width: 74px;
+  height: 112px;
+  box-shadow: var(--shadow-lg);
+}
+
+.top {
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.left {
+  top: 50%;
+  left: 0;
+  transform: translateY(-50%);
+}
+
+.right {
+  top: 50%;
+  right: 0;
+  transform: translateY(-50%);
+}
+
+.bottom {
+  left: 50%;
+  bottom: 0;
+  transform: translateX(-50%);
+}
+
+@media (max-width: 600px) {
+  .container {
+    min-height: 220px;
+  }
+
+  .cardWrapper,
+  .card {
+    width: 62px;
+    height: 94px;
+  }
+}

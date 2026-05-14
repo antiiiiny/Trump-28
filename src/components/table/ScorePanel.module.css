@@ -1,0 +1,50 @@
+.container {
+  background: var(--color-panel);
+  border-radius: var(--radius-md);
+  padding: var(--space-lg);
+  box-shadow: var(--shadow-md);
+  width: min(100%, 260px);
+}
+
+.title {
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
+  margin: 0 0 var(--space-md) 0;
+}
+
+.scores {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.scoreRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-md);
+  padding: var(--space-md);
+  background: var(--color-panel-dark);
+  border-radius: var(--radius-sm);
+}
+
+.teamA {
+  background: rgba(183, 211, 255, 0.35);
+}
+
+.teamB {
+  background: rgba(255, 214, 194, 0.35);
+}
+
+.playerName {
+  font-weight: var(--font-weight-medium);
+  flex: 1;
+  min-width: 0;
+}
+
+.scoreValue {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+  margin-left: auto;
+  white-space: nowrap;
+}

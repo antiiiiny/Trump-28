@@ -1,0 +1,78 @@
+.container {
+  min-height: 100vh;
+  background:
+    var(--felt-texture),
+    linear-gradient(135deg, var(--color-felt) 0%, var(--color-felt-lighter) 100%);
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  padding: var(--space-lg);
+  overflow: hidden;
+}
+
+.board {
+  position: relative;
+  width: min(1120px, 100%);
+  min-height: calc(100vh - (var(--space-lg) * 2));
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: var(--space-lg);
+}
+
+.middleRow {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) minmax(260px, 1.4fr) minmax(120px, 1fr);
+  align-items: center;
+  gap: var(--space-lg);
+  min-height: 0;
+  position: relative;
+}
+
+.bottomArea {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  min-height: 0;
+}
+
+.footerActions {
+  display: flex;
+  justify-content: center;
+}
+
+.secondaryButton {
+  padding: var(--space-sm) var(--space-lg);
+  border: none;
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.18);
+  color: white;
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+  min-height: 44px;
+}
+
+.secondaryButton:hover {
+  background: rgba(255, 255, 255, 0.24);
+}
+
+.statusRow {
+  display: grid;
+  grid-template-columns: minmax(0, 240px) minmax(160px, 1fr) minmax(0, 360px);
+  gap: var(--space-lg);
+  align-items: end;
+}
+
+@media (max-width: 900px) {
+  .board {
+    min-height: auto;
+  }
+
+  .middleRow {
+    grid-template-columns: 1fr;
+    justify-items: center;
+  }
+
+  .statusRow {
+    grid-template-columns: 1fr;
+  }
+}

@@ -1,0 +1,63 @@
+.container {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: var(--space-md);
+  max-width: 160px;
+}
+
+.nameplate {
+  background: var(--color-opponent);
+  padding: var(--space-md) var(--space-lg);
+  border-radius: var(--radius-md);
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--font-size-md);
+  text-align: center;
+  min-width: 140px;
+  box-shadow: var(--shadow-md);
+}
+
+.teamLabel {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.cardCount {
+  text-align: center;
+  font-size: var(--font-size-sm);
+  color: rgba(255, 255, 255, 0.7);
+  background: rgba(0, 0, 0, 0.2);
+  padding: var(--space-xs) var(--space-md);
+  border-radius: var(--radius-sm);
+}
+
+.teammate .nameplate {
+  background: var(--color-teammate);
+}
+
+.opponent .nameplate {
+  background: var(--color-opponent);
+}
+
+.top {
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.left {
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  align-items: flex-start;
+}
+
+.right {
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  align-items: flex-end;
+}

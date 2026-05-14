@@ -1,0 +1,29 @@
+:root {
+  font-family: var(--font-family);
+  line-height: 1.45;
+  font-weight: 400;
+  color: var(--color-text-primary);
+  background: var(--color-felt);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-felt);
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
