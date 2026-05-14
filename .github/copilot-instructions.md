@@ -201,3 +201,68 @@ All message payloads must be strictly typed — no ad-hoc objects, no `any`.
 - No bidding logic.
 - No game engine on the server.
 - Game table remains a stub/placeholder screen.
+
+---
+
+# Stage 4 Addendum — Multiplayer Room State & Reconnect
+**During:** Colyseus room state, sync, and reconnect wiring
+
+## Current stage goal
+Implement authoritative server room state, full client synchronisation, and reconnect handling. Game table should now reflect real server state. Bidding and card play are still stubs — focus is entirely on the sync layer being correct and reconnect being reliable.
+
+## Multiplayer synchronisation rules
+- Clients must never predict or locally finalise game actions.
+- The UI may show a pending state after a player action, but authoritative state always comes from the server.
+- Re-render only from Colyseus `onStateChange` — never from local mutation.
+- If server state contradicts local UI state, server always wins.
+
+## Hidden information rules (hard requirements)
+- Each client receives ONLY the cards in their own hand. Opponent and teammate hand contents must never appear in any client payload.
+- Trump suit is sent to clients ONLY after `trumpRevealed` becomes true. Before that, only the trump holder knows it.
+- Server-only state (full deck, undealt cards, trump suit before reveal) must never be in the synced Colyseus schema.
+- Review every schema field before syncing: if a client should not see it, it must not be in the patch.
+
+## Seat and team model rules
+- `PlayerSeat` (0–3) is assigned by the server at join time and never changes.
+- Teams are derived from seat: seats 0+2 = Team A, seats 1+3 = Team B. Never store team separately if it can be derived.
+- UI table positions derive from the LOCAL player's seat:
+  - Local player is always rendered at the bottom.
+  - Partner (same team, other seat) is always at the top.
+  - Opponents are left and right.
+  - Calculate relative position as: `(opponentSeat - localSeat + 4) % 4` → 1=right, 2=top(partner), 3=left.
+- Turn order is clockwise by seat: 0 → 1 → 2 → 3 → 0.
+- Never infer turn order or position from array index or join order.
+
+## Reconnect guarantees
+Use Colyseus `allowReconnection`. Do not build a custom token system.
+- On disconnect, server holds the seat open for 60 seconds (configurable constant).
+- Client stores Colyseus session token in `sessionStorage`.
+- On mount, client checks `sessionStorage` and attempts silent reconnection before showing reconnect UI.
+- After successful reconnection:
+  - Seat identity and team are unchanged.
+  - Hand contents match server state exactly.
+  - Current trick, turn state, bid state, and trump reveal state are fully restored.
+  - Trump suit is only sent to the reconnecting client if they are the trump holder OR if trump has been revealed.
+- A reconnecting client replaces the stale socket — it does not create a second player in the seat.
+
+## Room lifecycle rules
+- Empty rooms (all players disconnected, no active reconnect windows) self-clean after timeout.
+- Reconnect windows expire deterministically via server-side timers, not client pings.
+- All timers and intervals must be cleared in the Colyseus room `onDispose` handler.
+- If a player's reconnect window expires mid-game, the remaining players see a clear message and the room enters a paused/error state rather than continuing with a missing player.
+
+## Protocol rules
+- All client intent messages and server event payloads are typed in `shared/protocol/`.
+- Validate all incoming client messages with Zod on the server before acting on them.
+- Client and server payload shapes must never diverge — the shared type is the contract.
+- No ad-hoc socket message shapes anywhere.
+- Server rejects any action from a player whose turn it is not — return a typed error response, never silently ignore.
+
+## Protocol messages at this stage
+- Client → server: reconnect handled via Colyseus session (not a manual message)
+- Server → client: typed error responses for rejected actions
+
+## Do not build yet
+- No bidding logic.
+- No card dealing.
+- No trick resolution.
