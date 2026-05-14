@@ -1,4 +1,4 @@
-import type { Room } from 'colyseus.js';
+import type { Room } from '@colyseus/sdk';
 import type { LobbyRoomState } from '../../../shared/colyseus/lobby';
 import { joinRoomSchema, leaveRoomSchema, playerNameSchema, readyUpSchema, roomCodeSchema, startGameSchema } from '../../../shared/protocol/lobby';
 import { colyseusClient } from './client';

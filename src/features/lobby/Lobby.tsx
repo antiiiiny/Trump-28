@@ -1,4 +1,4 @@
-import type { Room } from 'colyseus.js';
+import type { Room } from '@colyseus/sdk';
 import type { LobbyPlayerState, LobbyRoomState } from '../../../shared/colyseus/lobby';
 import styles from './Lobby.module.css';
 
@@ -57,6 +57,14 @@ function renderPlayerCard(
 }
 
 export function Lobby({ room, onReadyUp, onStartGame, onLeaveRoom, onCopyRoomCode }: LobbyProps) {
+  if (!room || !room.state || !room.state.players || room.state.players.length < 4) {
+    return (
+      <div className={styles.container}>
+        <div className={styles.panel}>Loading room state...</div>
+      </div>
+    );
+  }
+
   const players = [...room.state.players];
   const hostIsLocal = room.state.hostId === room.sessionId;
   const allPlayersReady = players.every((player) => player.occupied && player.connected && player.ready);

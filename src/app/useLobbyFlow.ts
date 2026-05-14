@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import type { Room } from 'colyseus.js';
+import type { Room } from '@colyseus/sdk';
 import type { LobbyRoomState } from '../../shared/colyseus/lobby';
 import { createLobbyRoom, joinLobbyRoom, sendLeaveRoom, sendReadyUp, sendStartGame } from '../network/colyseus/lobby';
 

@@ -28,7 +28,6 @@ export class LobbyRoom extends Room<{ state: LobbyRoomState }> {
   private readonly seatByClient = new Map<string, number>();
 
   onCreate() {
-    this.roomName = 'lobby';
     this.roomId = generateRoomCode();
     this.setState(new LobbyRoomState());
     this.state.roomCode = this.roomId;

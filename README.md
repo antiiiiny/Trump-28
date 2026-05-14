@@ -31,9 +31,9 @@ Then open the app in one or more browser tabs:
 
 Stage 3 is focused on room creation, room-code joining, lobby syncing, ready states, and host start gating.
 
-Known limitation:
+Known limitations:
 
-- The lobby room create/join flow is still being debugged. Recent failures have been on the Colyseus matchmaker create path and on the client seat-reservation handshake.
+- None currently blocking. The lobby room create/join flow, including the Colyseus matchmaker create path and the client seat-reservation handshake, has been successfully fixed and tested.
 
 ## Useful files
 
