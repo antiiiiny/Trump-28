@@ -3,7 +3,7 @@ import type { LobbyPlayerState, LobbyRoomState } from '../../../shared/colyseus/
 import styles from './Lobby.module.css';
 
 interface LobbyProps {
-  room: Room<LobbyRoomState>;
+  room: Room<{ state: LobbyRoomState }>;
   onReadyUp: () => void;
   onStartGame: () => void;
   onLeaveRoom: () => void;

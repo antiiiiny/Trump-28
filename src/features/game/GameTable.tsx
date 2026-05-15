@@ -12,7 +12,7 @@ import styles from './GameTable.module.css';
 
 interface GameTableProps {
   onNavigate?: (screen: 'home' | 'results' | 'lobby') => void;
-  room?: Room<LobbyRoomState> | null;
+  room?: Room<{ state: LobbyRoomState }> | null;
   myHand?: string[];
 }
 

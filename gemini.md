@@ -11,8 +11,9 @@ The repo is being built in stages:
 1. Stage 1: shared scaffold and canonical card/shared model setup.
 2. Stage 2: mock UI and visual layout for the game flow.
 3. Stage 3: real Colyseus room creation, room-code join, lobby syncing, ready states, and host start gating.
+4. Stage 4: authoritative room state, reconnect handling, and live game-screen sync.
 
-The game table is intentionally still a stub while Stage 3 is being finished.
+The lobby flow is implemented, and the game screen now consumes live room state. Bidding, card dealing, and trick resolution are still stubs.
 
 ## What happened so far
 
@@ -72,19 +73,11 @@ The game table is intentionally still a stub while Stage 3 is being finished.
 - `npm run build` now passes.
 - `npm run server` now starts successfully.
 
-### Current failure being debugged
+## Current status
 
-The lobby still fails during room creation / join handshake.
+The room and lobby flow are now wired against the Colyseus server, including room creation, room-code join, ready state sync, reconnect handling, and the game-room handoff.
 
-Observed errors over time:
-
-- Client-side seat-reservation handshake error:
-  - `TypeError: Cannot read properties of undefined (reading 'name')`
-- Network response from the create endpoint:
-  - `POST /matchmake/create/lobby` returned `526 unknown`
-- Join-by-id path has returned `room "AFSF" not found` for a room code join attempt.
-
-Current evidence suggests the problem is in the Colyseus matchmaker / seat-reservation response path, not in the lobby form input validation.
+Current work is focused on the stubbed gameplay systems that come after the lobby: bidding, card dealing, and trick resolution.
 
 ## Commands that matter
 
@@ -111,7 +104,7 @@ If testing on another device on the same Wi-Fi, the Vite dev server should be st
 
 - The repo builds successfully.
 - The server process starts successfully.
-- The room creation handshake still fails and needs the next fix in the Colyseus server or matchmaker path.
+- The room creation and join flow is implemented and currently used by the client.
 ## Stage 4 completion notes
 
 - Lobby reconnect handling is implemented with `allowReconnection`, deterministic timeout cleanup, and typed error responses.

@@ -15,7 +15,7 @@ export interface FlowOverlay {
 
 export interface RoomFlowState {
   screen: AppScreen;
-  room: Room<LobbyRoomState> | null;
+  room: Room<{ state: LobbyRoomState }> | null;
   myHand: string[];
   busy: boolean;
   overlay: FlowOverlay | null;
@@ -60,16 +60,16 @@ function normalizeRoomCode(roomCode: string) {
 
 export function useLobbyFlow(): RoomFlowState {
   const [screen, setScreen] = useState<AppScreen>('home');
-  const [room, setRoom] = useState<Room<LobbyRoomState> | null>(null);
+  const [room, setRoom] = useState<Room<{ state: LobbyRoomState }> | null>(null);
   const [myHand, setMyHand] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [overlay, setOverlay] = useState<FlowOverlay | null>(null);
   const [, forceRender] = useState(0);
   const intentionalLeaveRef = useRef(false);
-  const currentRoomRef = useRef<Room<LobbyRoomState> | null>(null);
+  const currentRoomRef = useRef<Room<{ state: LobbyRoomState }> | null>(null);
   const transitioningToGameRef = useRef(false);
 
-  const attachRoom = (nextRoom: Room<LobbyRoomState>) => {
+  const attachRoom = (nextRoom: Room<{ state: LobbyRoomState }>) => {
     currentRoomRef.current = nextRoom;
     setRoom(nextRoom);
     intentionalLeaveRef.current = false;
@@ -81,7 +81,7 @@ export function useLobbyFlow(): RoomFlowState {
       if (
         state.phase === 'playing'
         && state.gameRoomId
-        && nextRoom.id !== state.gameRoomId
+        && nextRoom.roomId !== state.gameRoomId
         && !transitioningToGameRef.current
       ) {
         transitioningToGameRef.current = true;

@@ -23,7 +23,7 @@ function generateRoomCode(): string {
   return code;
 }
 
-export class LobbyRoom extends Room<LobbyRoomState> {
+export class LobbyRoom extends Room<{ state: LobbyRoomState }> {
   maxClients = 4;
 
   private readonly seatByClient = new Map<string, number>();
@@ -128,7 +128,7 @@ export class LobbyRoom extends Room<LobbyRoomState> {
         // remove mapping
         this.seatByClient.delete(client.sessionId);
         if (this.state.hostId === client.sessionId) {
-          this.state.hostId = this.state.players.find((p) => p.occupied)?.playerId ?? '';
+          this.state.hostId = this.state.players.find((player: LobbyPlayerState) => player.occupied)?.playerId ?? '';
         }
       }
       this.reconnectTimers.delete(client.sessionId);

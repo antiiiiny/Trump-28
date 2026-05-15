@@ -20,7 +20,7 @@ Do not introduce Redux, React Query, Jotai, MobX, Joi, Yup, or styled-components
 ```
 shared/
   models/     ← Card, Player, Bid, Trick, GameState, RoomState
-  enums/      ← Suit, Rank, GamePhase
+  enums/      ← Suit, Rank, GamePhase, BidCategory
   protocol/   ← client intent types, server event types
 src/
   app/        routes/ providers/
@@ -57,7 +57,7 @@ const libraryKey = `${suit}${rankKey}`;
 ```
 
 ## 28 game rules (authoritative)
-These are the exact rules to implement. Do not infer rules from other card games.
+These are the exact rules to implement. Do not infer rules from any other card game.
 
 ### Deck and teams
 - 32 cards: ranks 7, 8, 9, 10, J, Q, K, A across all 4 suits
@@ -65,39 +65,57 @@ These are the exact rules to implement. Do not infer rules from other card games
 - Partners sit opposite each other
 
 ### Card point values
-- J = 3 points
-- 9 = 2 points
-- A = 1 point
-- 10 = 1 point
+- J = 3 points, 9 = 2 points, A = 1 point, 10 = 1 point
 - K, Q, 8, 7 = 0 points
 - Total points per round = 28
 
 ### Card rank order (for trick-winning, high to low)
 J, 9, A, 10, K, Q, 8, 7
 
-### Deal
-- Deal 4 cards to each player → bidding round 1
-- Deal remaining 4 cards to each player → bidding round 2
+### Deal sequence
+1. Deal 4 cards to each player → bidding round 1 (phase: `biddingRound1`)
+2. Deal remaining 4 cards to each player → bidding round 2 (phase: `biddingRound2`)
+3. Play tricks (phase: `playing`)
+
+### Bid categories
+```ts
+type BidCategory = 'normal' | 'honours' | 'disti' | 'thani';
+```
+- **normal**: round 1, bid 14–19
+- **honours**: round 1, bid 20–28 (only valid when your teammate has already passed)
+- **disti**: round 2, bid 24–27
+- **thani**: round 2, bid exactly 28
 
 ### Bidding rules
-- Minimum opening bid: 14. The first player to bid MUST bid (cannot pass).
+- First player to act in round 1 MUST bid — minimum 14. Cannot pass on opening.
 - Each subsequent bid must be strictly higher than the current bid.
-- If your teammate has already passed, you may only re-enter bidding at 20 or higher ("Honours").
-- After the second 4 cards are dealt, the minimum bid to re-enter or raise is 24.
+- If your teammate has already passed, you may only bid 20 or higher (Honours).
+- After second 4 cards are dealt (round 2), minimum bid is 24. Players who passed in round 1 cannot re-enter.
 - Maximum bid is 28. No bids above 28.
 - Bidding ends when all other players pass.
 
 ### Trump rules
-- Winning bidder privately selects the trump suit — it is hidden from all other players.
+- Winning bidder privately selects trump suit — hidden from all other players until revealed.
 - Winning bidder leads the first trick.
 - Winning bidder CANNOT lead with a trump card.
-- Any player may only play a trump card if they have no cards of the led suit.
-- Trump suit is revealed the first time a trump card is legally played.
+- Any player may only play trump if they have no cards of the led suit.
+- Trump is revealed the first time a trump card is legally played.
 
-### Round result
-- If the bidding team scores points >= their bid, they win the round.
-- If the bidding team scores points < their bid, the opposing team wins the round.
-- Track cumulative round wins per team; define game-end condition explicitly when implementing scoring.
+### Round result and coolie scoring
+Coolies are per team. Both teams start at 0. The 5th coolie is the joker (special shame token).
+There is no automatic game-end — the host ends the game manually when players decide to stop.
+
+| Bid category | Bidding team wins | Bidding team loses |
+|---|---|---|
+| Normal (14–19, round 1) | Opponents get 1 coolie | Bidding team gets 2 coolies |
+| Honours (20–28, round 1) | Opponents get 2 coolies | Bidding team gets 3 coolies |
+| Disti (24–27, round 2) | Opponents get 3 coolies | Bidding team gets 4 coolies |
+| Thani (28, round 2) | Opponents get 4 coolies | Bidding team gets 5 coolies |
+
+Winning = bidding team's trick points >= their bid value.
+Losing = bidding team's trick points < their bid value.
+The joker is the 5th coolie — display it distinctly in the UI.
+Coolies accumulate indefinitely across rounds.
 
 ## Architecture boundaries (hard rules)
 - UI components must not contain game-rule logic.
@@ -139,130 +157,3 @@ If implementation details are ambiguous:
 
 ## Prompting output format
 When generating code: list touched files first, explain assumptions briefly, then generate complete code. Mention edge cases when relevant.
-
----
-
-# Stage 3 Addendum — Room & Lobby Flow
-**During:** Room creation, joining, and lobby wiring
-
-## Current stage goal
-Wire up room creation, room code joining, and the lobby screen against a real Colyseus server. All 4 players should be able to create/join a room, see each other, ready up, and have the host start the game. Game table remains a stub.
-
-## Dev server setup
-Two processes must run simultaneously during development:
-- `npm run dev` — Vite frontend on port 5173
-- `npm run server` — Colyseus server on port 2567
-
-To test multiple players locally, open the app in multiple browser windows or tabs. Each window is an independent player. For real device testing, run Vite with `--host` and connect from other devices on the same WiFi network.
-
-## Screens to wire
-- **Create/Join Room** — create action calls Colyseus, returns room code. Join action connects by code. Player name is set here.
-- **Lobby** — reflects live Colyseus room state: 4 player slots, team labels, ready states, room code + copy button. Host sees start button only when all 4 players are ready.
-- **Reconnect/Error overlay** — shown on failed join and unexpected disconnect.
-
-## Room and seat rules
-- Room accepts exactly 4 players.
-- Seats are assigned by the server in join order: 0, 1, 2, 3.
-- Teams are fixed by seat: seats 0+2 = Team A, seats 1+3 = Team B.
-- Seat assignment is permanent for the life of the room — never reassigned.
-- Host is the player who created the room (seat 0).
-- Room code: short, human-readable, uppercase, 4 characters (e.g. `HKQJ`).
-
-## Lobby display rules
-- Show 4 player slots always, even if not all players have joined yet (show "Waiting..." for empty slots).
-- Display team grouping clearly — Team A (seats 0+2) and Team B (seats 1+3).
-- Show ready indicator per player.
-- Host start button is disabled until all 4 slots are filled and all players are ready.
-- Room code displayed prominently with a one-click copy button.
-
-## Error states — always show user-facing messages for
-- Invalid room code.
-- Room already full (4 players present).
-- Player name missing or too long (max 16 characters).
-- Connection failure on join attempt.
-- Unexpected disconnect during lobby.
-
-Never leave the user on a blank screen or a spinner with no message.
-
-## Colyseus integration
-- Use `onStateChange` to reflect player list, team assignments, and ready states in real time.
-- Do not maintain a local copy of player state — render directly from synced room state.
-- Ready state is server-authoritative; clicking ready sends a message, does not toggle local UI state.
-
-## Protocol messages at this stage
-Defined in `shared/protocol/`. Use Zod schemas for server-side validation.
-- Client → server: `joinRoom`, `leaveRoom`, `readyUp`, `startGame`
-- Server → client: room state updates via Colyseus schema sync
-
-All message payloads must be strictly typed — no ad-hoc objects, no `any`.
-
-## Do not build yet
-- No card dealing.
-- No bidding logic.
-- No game engine on the server.
-- Game table remains a stub/placeholder screen.
-
----
-
-# Stage 4 Addendum — Multiplayer Room State & Reconnect
-**During:** Colyseus room state, sync, and reconnect wiring
-
-## Current stage goal
-Implement authoritative server room state, full client synchronisation, and reconnect handling. Game table should now reflect real server state. Bidding and card play are still stubs — focus is entirely on the sync layer being correct and reconnect being reliable.
-
-## Multiplayer synchronisation rules
-- Clients must never predict or locally finalise game actions.
-- The UI may show a pending state after a player action, but authoritative state always comes from the server.
-- Re-render only from Colyseus `onStateChange` — never from local mutation.
-- If server state contradicts local UI state, server always wins.
-
-## Hidden information rules (hard requirements)
-- Each client receives ONLY the cards in their own hand. Opponent and teammate hand contents must never appear in any client payload.
-- Trump suit is sent to clients ONLY after `trumpRevealed` becomes true. Before that, only the trump holder knows it.
-- Server-only state (full deck, undealt cards, trump suit before reveal) must never be in the synced Colyseus schema.
-- Review every schema field before syncing: if a client should not see it, it must not be in the patch.
-
-## Seat and team model rules
-- `PlayerSeat` (0–3) is assigned by the server at join time and never changes.
-- Teams are derived from seat: seats 0+2 = Team A, seats 1+3 = Team B. Never store team separately if it can be derived.
-- UI table positions derive from the LOCAL player's seat:
-  - Local player is always rendered at the bottom.
-  - Partner (same team, other seat) is always at the top.
-  - Opponents are left and right.
-  - Calculate relative position as: `(opponentSeat - localSeat + 4) % 4` → 1=right, 2=top(partner), 3=left.
-- Turn order is clockwise by seat: 0 → 1 → 2 → 3 → 0.
-- Never infer turn order or position from array index or join order.
-
-## Reconnect guarantees
-Use Colyseus `allowReconnection`. Do not build a custom token system.
-- On disconnect, server holds the seat open for 60 seconds (configurable constant).
-- Client stores Colyseus session token in `sessionStorage`.
-- On mount, client checks `sessionStorage` and attempts silent reconnection before showing reconnect UI.
-- After successful reconnection:
-  - Seat identity and team are unchanged.
-  - Hand contents match server state exactly.
-  - Current trick, turn state, bid state, and trump reveal state are fully restored.
-  - Trump suit is only sent to the reconnecting client if they are the trump holder OR if trump has been revealed.
-- A reconnecting client replaces the stale socket — it does not create a second player in the seat.
-
-## Room lifecycle rules
-- Empty rooms (all players disconnected, no active reconnect windows) self-clean after timeout.
-- Reconnect windows expire deterministically via server-side timers, not client pings.
-- All timers and intervals must be cleared in the Colyseus room `onDispose` handler.
-- If a player's reconnect window expires mid-game, the remaining players see a clear message and the room enters a paused/error state rather than continuing with a missing player.
-
-## Protocol rules
-- All client intent messages and server event payloads are typed in `shared/protocol/`.
-- Validate all incoming client messages with Zod on the server before acting on them.
-- Client and server payload shapes must never diverge — the shared type is the contract.
-- No ad-hoc socket message shapes anywhere.
-- Server rejects any action from a player whose turn it is not — return a typed error response, never silently ignore.
-
-## Protocol messages at this stage
-- Client → server: reconnect handled via Colyseus session (not a manual message)
-- Server → client: typed error responses for rejected actions
-
-## Do not build yet
-- No bidding logic.
-- No card dealing.
-- No trick resolution.
