@@ -44,6 +44,8 @@ export class LobbyRoomState extends Schema {
   @type('number') roundNumber = 0;
   @type('number') teamAScore = 0;
   @type('number') teamBScore = 0;
+  @type('number') teamACoolies = 0;
+  @type('number') teamBCoolies = 0;
   @type('string') activePlayerId = '';
   @type('number') dealerSeat: PlayerSeat = 0;
   @type('string') trumpSuit = '';

@@ -12,8 +12,9 @@ The repo is being built in stages:
 2. Stage 2: mock UI and visual layout for the game flow.
 3. Stage 3: real Colyseus room creation, room-code join, lobby syncing, ready states, and host start gating.
 4. Stage 4: authoritative room state, reconnect handling, and live game-screen sync.
+5. Stage 5: bidding, trump selection, trick resolution, and scoring wired through the pure server/game engine.
 
-The lobby flow is implemented, and the game screen now consumes live room state. Bidding, card dealing, and trick resolution are still stubs.
+The lobby flow is implemented, and the game screen now consumes live room state. Bidding, card dealing, trump selection, trick resolution, and scoring are now wired through the server-side game room and shared protocol.
 
 ## What happened so far
 
@@ -61,7 +62,7 @@ The lobby flow is implemented, and the game screen now consumes live room state.
 - Seats are assigned by join order and are permanent for the life of the room.
 - Teams are fixed by seat: seats 0 and 2 are Team A, seats 1 and 3 are Team B.
 - Lobby state is server-authoritative and should be rendered directly from Colyseus state.
-- The game table is still a placeholder.
+- The game table now renders live bidding, turn state, trick state, and player hand data from Colyseus state.
 
 ## Debugging history
 
@@ -75,9 +76,11 @@ The lobby flow is implemented, and the game screen now consumes live room state.
 
 ## Current status
 
-The room and lobby flow are now wired against the Colyseus server, including room creation, room-code join, ready state sync, reconnect handling, and the game-room handoff.
+The room and lobby flow are wired against the Colyseus server, including room creation, room-code join, ready state sync, reconnect handling, and the game-room handoff.
 
-Current work is focused on the stubbed gameplay systems that come after the lobby: bidding, card dealing, and trick resolution.
+The gameplay layer is now wired as well: bidding, pass handling, trump selection, trick play, trick resolution, and round scoring are connected to the server room and client UI.
+
+Current follow-up work is runtime verification of the full 4-player flow and any remaining UI polish after live playtesting.
 
 ## Commands that matter
 
@@ -113,3 +116,10 @@ If testing on another device on the same Wi-Fi, the Vite dev server should be st
 - Private server delivery helpers exist for hand snapshots, trump reveal, and public round snapshots.
 - The client now has a game-room join helper and stores the active room session in `sessionStorage`.
 - The game screen now consumes live room state and private hand data when available.
+
+## Stage 5 completion notes
+
+- The shared game protocol includes typed messages for place bid, select trump, play card, and end game.
+- `server/rooms/GameRoom.ts` validates bids and card plays against the pure engine and advances bidding / trick state.
+- `src/features/game/GameTable.tsx` renders live bidding order, turn status, trick positions, and player hand state from room data.
+- The client send helpers now serialize the correct payloads for bid, pass, trump selection, and card play.

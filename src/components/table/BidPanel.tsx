@@ -4,6 +4,7 @@ interface BidPanelProps {
   currentBid: number | null;
   selectedBid: number | null;
   honoursRequired: boolean;
+  activeBidder?: string | null;
   onPlaceBid?: (value: number) => void;
   onPass?: () => void;
   disabled?: boolean;
@@ -13,6 +14,7 @@ export function BidPanel({
   currentBid,
   selectedBid,
   honoursRequired,
+  activeBidder,
   onPlaceBid,
   onPass,
   disabled = false,
@@ -23,7 +25,10 @@ export function BidPanel({
     <div className={styles.container}>
       <div className={styles.headerRow}>
         <h3 className={styles.title}>Bid Panel</h3>
-        <span className={styles.note}>{honoursRequired ? 'Honours: 20+' : 'Opening: 14+'}</span>
+        <div>
+          <div className={styles.note}>{honoursRequired ? 'Honours: 20+' : 'Opening: 14+'}</div>
+          {activeBidder ? <div className={styles.bidder}>Current: {activeBidder}</div> : null}
+        </div>
       </div>
 
       <p className={styles.currentBid}>

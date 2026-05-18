@@ -22,20 +22,32 @@
 
 .stage {
   position: relative;
-  width: min(100%, 420px);
+  width: min(100%, 560px);
   aspect-ratio: 1;
 }
 
 .cardWrapper {
   position: absolute;
-  width: 74px;
-  height: 112px;
+  width: 96px;
+  height: 144px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 
 .card {
-  width: 74px;
-  height: 112px;
+  width: 96px;
+  height: 144px;
   box-shadow: var(--shadow-lg);
+}
+
+.playerLabel {
+  margin-top: 6px;
+  background: rgba(255,255,255,0.12);
+  color: white;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 12px;
 }
 
 .top {
@@ -69,7 +81,7 @@
 
   .cardWrapper,
   .card {
-    width: 62px;
-    height: 94px;
+    width: 74px;
+    height: 108px;
   }
 }

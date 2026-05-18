@@ -1,9 +1,9 @@
 import { Room, type Client } from 'colyseus';
 import { GameBidState, GameTrickCardState, GameTrickState, LobbyRoomState, createLobbyPlayers, type LobbyPlayerState } from '../../shared/colyseus/lobby';
 import { joinRoomSchema, leaveRoomSchema, readyUpSchema, startGameSchema, type JoinRoomPayload, type LeaveRoomPayload, type ReadyUpPayload, type StartGamePayload } from '../../shared/protocol/lobby';
-import { placeBidPayloadSchema, playCardPayloadSchema, selectTrumpPayloadSchema, type PlaceBidPayload, type PlayCardPayload, type SelectTrumpPayload } from '../../shared/protocol/game';
+import { endGamePayloadSchema, placeBidPayloadSchema, playCardPayloadSchema, selectTrumpPayloadSchema, type EndGamePayload, type PlaceBidPayload, type PlayCardPayload, type SelectTrumpPayload } from '../../shared/protocol/game';
 import { createDeck } from '../game/deck';
-import { getNextEligibleBidderId, isBiddingComplete, resolveTrick, scoreRound, validateBid, validateCardPlay, type RulesState } from '../game/engine';
+import { getNextEligibleBidderId, isBiddingComplete, resolveTrick, scoreCoolies, scoreRound, validateBid, validateCardPlay, type RulesState } from '../game/engine';
 import { sendPrivateHand, sendPrivateTrump, sendRoundSnapshot } from '../game/privateDelivery';
 import type { Card } from '../../shared/models/card';
 import type { Bid } from '../../shared/models/bid';
@@ -107,7 +107,8 @@ function createRoundSnapshot(room: GameRoom): RoundState {
 }
 
 export class GameRoom extends Room<{ state: LobbyRoomState }> {
-  maxClients = 4;
+  // Do NOT set maxClients here; let game logic validate seat assignments.
+  // This prevents auto-locking before all players can join.
 
   private readonly seatByClient = new Map<string, number>();
   private readonly reconnectTimers = new Map<string, NodeJS.Timeout>();
@@ -118,59 +119,85 @@ export class GameRoom extends Room<{ state: LobbyRoomState }> {
   privateTrumpHolderSeat: number | null = null;
 
   onCreate(options: { lobbyRoomId?: string } = {}) {
-    this.setState(new LobbyRoomState());
-    this.state.roomCode = this.roomId;
-    this.state.gameRoomId = this.roomId;
-    this.state.phase = 'biddingRound1';
-    this.state.gameStarted = true;
-    this.state.roundNumber = 1;
-    this.state.dealerSeat = 0;
-    this.state.activePlayerId = '';
-    this.state.trumpRevealed = false;
-    this.state.trumpSuit = '';
-    this.state.trumpHolderId = '';
-    this.state.players = createLobbyPlayers();
-    ensurePlayerSlots(this.state);
+    try {
+      console.log('GameRoom.onCreate: Initializing game room with options=', options);
+      this.setState(new LobbyRoomState());
+      this.state.roomCode = this.roomId;
+      this.state.gameRoomId = this.roomId;
+      this.state.phase = 'biddingRound1';
+      this.state.gameStarted = true;
+      this.state.roundNumber = 1;
+      this.state.dealerSeat = 0;
+      this.state.activePlayerId = '';
+      this.state.trumpRevealed = false;
+      this.state.trumpSuit = '';
+      this.state.trumpHolderId = '';
+      this.state.players = createLobbyPlayers();
+      ensurePlayerSlots(this.state);
 
-    this.handsBySeat.clear();
-    this.pendingHandsBySeat.clear();
-    this.dealtSecondHands.clear();
-    const deck = createDeck(options.lobbyRoomId ?? this.roomId);
-    const initialHands = [deck.slice(0, 4), deck.slice(4, 8), deck.slice(8, 12), deck.slice(12, 16)];
-    const secondHands = [deck.slice(16, 20), deck.slice(20, 24), deck.slice(24, 28), deck.slice(28, 32)];
-    initialHands.forEach((hand, seat) => this.handsBySeat.set(seat, hand));
-    secondHands.forEach((hand, seat) => this.pendingHandsBySeat.set(seat, hand));
+      this.handsBySeat.clear();
+      this.pendingHandsBySeat.clear();
+      this.dealtSecondHands.clear();
+      const deck = createDeck(options.lobbyRoomId ?? this.roomId);
+      const initialHands = [deck.slice(0, 4), deck.slice(4, 8), deck.slice(8, 12), deck.slice(12, 16)];
+      const secondHands = [deck.slice(16, 20), deck.slice(20, 24), deck.slice(24, 28), deck.slice(28, 32)];
+      initialHands.forEach((hand, seat) => this.handsBySeat.set(seat, hand));
+      secondHands.forEach((hand, seat) => this.pendingHandsBySeat.set(seat, hand));
 
-    this.privateTrumpSuit = '';
-    this.privateTrumpHolderSeat = null;
+      this.privateTrumpSuit = '';
+      this.privateTrumpHolderSeat = null;
 
-    this.onMessage('joinRoom', (client: Client, message: JoinRoomPayload) => {
-      this.handleJoinRoom(client, message);
-    });
+      this.onMessage('joinRoom', (client: Client, message: JoinRoomPayload) => {
+        this.handleJoinRoom(client, message);
+      });
 
-    this.onMessage('leaveRoom', (client: Client, message: LeaveRoomPayload) => {
-      this.handleLeaveRoom(client, message);
-    });
+      this.onMessage('leaveRoom', (client: Client, message: LeaveRoomPayload) => {
+        this.handleLeaveRoom(client, message);
+      });
 
-    this.onMessage('readyUp', (client: Client, message: ReadyUpPayload) => {
-      this.handleReadyUp(client, message);
-    });
+      this.onMessage('readyUp', (client: Client, message: ReadyUpPayload) => {
+        this.handleReadyUp(client, message);
+      });
 
-    this.onMessage('startGame', (client: Client, message: StartGamePayload) => {
-      this.handleStartGame(client, message);
-    });
+      this.onMessage('startGame', (client: Client, message: StartGamePayload) => {
+        this.handleStartGame(client, message);
+      });
 
-    this.onMessage('placeBid', (client: Client, message: PlaceBidPayload) => {
-      this.handlePlaceBid(client, message);
-    });
+      this.onMessage('placeBid', (client: Client, message: PlaceBidPayload) => {
+        this.handlePlaceBid(client, message);
+      });
 
-    this.onMessage('selectTrump', (client: Client, message: SelectTrumpPayload) => {
-      this.handleSelectTrump(client, message);
-    });
+      this.onMessage('selectTrump', (client: Client, message: SelectTrumpPayload) => {
+        this.handleSelectTrump(client, message);
+      });
 
-    this.onMessage('playCard', (client: Client, message: PlayCardPayload) => {
-      this.handlePlayCard(client, message);
-    });
+      this.onMessage('playCard', (client: Client, message: PlayCardPayload) => {
+        this.handlePlayCard(client, message);
+      });
+
+      this.onMessage('endGame', (client: Client, message: EndGamePayload) => {
+        this.handleEndGame(client, message);
+      });
+
+      console.log('GameRoom.onCreate: Setup complete');
+    } catch (err) {
+      console.error('GameRoom.onCreate: Error during initialization', err);
+      throw err;
+    }
+  }
+
+  onDispose() {
+    console.log('GameRoom.onDispose: Room is being disposed');
+    for (const timer of this.reconnectTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.reconnectTimers.clear();
+  }
+
+  onJoinRequest(options: { seat?: number; playerId?: string; name?: string } = {}) {
+    console.log('GameRoom.onJoinRequest:', options);
+    // Allow all players to join; validation happens in onJoin
+    return true;
   }
 
   private sendClientError(client: Client, code: string, message: string) {
@@ -193,53 +220,115 @@ export class GameRoom extends Room<{ state: LobbyRoomState }> {
   }
 
   onJoin(client: Client, options: { seat?: number; playerId?: string; name?: string } = {}) {
-    const existingTimer = this.reconnectTimers.get(client.sessionId);
-    if (existingTimer) {
-      clearTimeout(existingTimer);
-      this.reconnectTimers.delete(client.sessionId);
-    }
+    console.log('GameRoom.onJoin:', { clientSessionId: client.sessionId, options });
+    try {
+      const existingTimer = this.reconnectTimers.get(client.sessionId);
+      if (existingTimer) {
+        clearTimeout(existingTimer);
+        this.reconnectTimers.delete(client.sessionId);
+      }
 
-    let seat = this.seatByClient.get(client.sessionId);
-    if (seat === undefined) {
-      seat = getSeatFromOptions(options);
-    }
-    if (seat === undefined) {
-      seat = this.state.players.findIndex((player: LobbyPlayerState) => !player.occupied);
-    }
+      let seat = this.seatByClient.get(client.sessionId);
+      if (seat === undefined) {
+        seat = getSeatFromOptions(options);
+      }
+      if (seat === undefined) {
+        seat = this.state.players.findIndex((player: LobbyPlayerState) => !player.occupied);
+      }
 
-    if (seat === -1 || seat === undefined) {
-      this.sendClientError(client, 'room_full', 'Game room already full.');
-      return;
+      console.log('GameRoom.onJoin: Assigned seat=', seat);
+      if (seat === -1 || seat === undefined) {
+        console.log('GameRoom.onJoin: Room full, rejecting client');
+        this.sendClientError(client, 'room_full', 'Game room already full.');
+        return;
+      }
+
+      // Prevent same player from occupying the same seat twice
+      const playerId = options.playerId ?? client.sessionId;
+      const seatPlayer = this.state.players[seat];
+      if (seatPlayer.occupied && seatPlayer.playerId !== '' && seatPlayer.playerId !== playerId) {
+        console.log('GameRoom.onJoin: Seat', seat, 'already occupied by different player');
+        this.sendClientError(client, 'seat_occupied', 'This seat is already occupied.');
+        return;
+      }
+      if (seatPlayer.occupied && seatPlayer.playerId === playerId && this.seatByClient.get(client.sessionId) === undefined) {
+        console.log('GameRoom.onJoin: Player', playerId, 'already has a session, rejecting duplicate');
+        this.sendClientError(client, 'already_seated', 'You are already seated in this game.');
+        return;
+      }
+
+      console.log('GameRoom.onJoin: Hydrating client at seat', seat);
+      this.hydrateClient(client, seat, options);
+      const openingSeat = ((this.state.dealerSeat + 1) % 4) as number;
+      if (!this.state.activePlayerId && seat === openingSeat) {
+        this.state.activePlayerId = this.state.players[seat].playerId;
+      }
+      this.state.paused = false;
+      this.state.pauseReason = '';
+
+      try {
+        const hand = this.handsBySeat.get(seat) ?? [];
+        console.log('GameRoom.onJoin: Sending private hand with', hand.length, 'cards');
+        sendPrivateHand(client, this.state.players[seat].playerId, hand);
+        console.log('GameRoom.onJoin: Private hand sent');
+      } catch (err) {
+        console.error('GameRoom.onJoin: Error sending private hand:', err);
+        this.sendClientError(client, 'hand_send_failed', 'Failed to send hand data');
+        return;
+      }
+
+      try {
+        console.log('GameRoom.onJoin: Sending round snapshot');
+        sendRoundSnapshot(client, createRoundSnapshot(this), this.state.players[seat].playerId);
+        console.log('GameRoom.onJoin: Round snapshot sent');
+      } catch (err) {
+        console.error('GameRoom.onJoin: Error sending round snapshot:', err);
+        this.sendClientError(client, 'snapshot_send_failed', 'Failed to send game state');
+        return;
+      }
+
+      try {
+        if (this.privateTrumpHolderSeat === seat && this.privateTrumpSuit) {
+          console.log('GameRoom.onJoin: Sending private trump to holder at seat', seat);
+          sendPrivateTrump(client, this.privateTrumpSuit, this.state.players[seat].playerId);
+          console.log('GameRoom.onJoin: Private trump sent');
+        }
+      } catch (err) {
+        console.error('GameRoom.onJoin: Error sending private trump:', err);
+        this.sendClientError(client, 'trump_send_failed', 'Failed to send trump data');
+        return;
+      }
+
+      console.log('GameRoom.onJoin: Client successfully joined at seat', seat);
+      // Note: Not locking the room here to avoid blocking WebSocket handshakes.
+      // The game will proceed normally with 4 players, and reconnection is handled in onLeave.
+      console.log('GameRoom.onJoin: Returning from onJoin for client', client.sessionId);
+    } catch (err) {
+      console.error('GameRoom.onJoin: Unhandled error in onJoin:', err);
+      try {
+        this.sendClientError(client, 'join_error', 'Error during join process');
+      } catch (sendErr) {
+        console.error('GameRoom.onJoin: Could not send error to client:', sendErr);
+      }
     }
-
-    this.hydrateClient(client, seat, options);
-    const openingSeat = ((this.state.dealerSeat + 1) % 4) as number;
-    if (!this.state.activePlayerId && seat === openingSeat) {
-      this.state.activePlayerId = this.state.players[seat].playerId;
-    }
-    this.state.paused = false;
-    this.state.pauseReason = '';
-
-    const hand = this.handsBySeat.get(seat) ?? [];
-    sendPrivateHand(client, this.state.players[seat].playerId, hand);
-
-    sendRoundSnapshot(client, createRoundSnapshot(this), this.state.players[seat].playerId);
-
-    if (this.privateTrumpHolderSeat === seat && this.privateTrumpSuit) {
-      sendPrivateTrump(client, this.privateTrumpSuit, this.state.players[seat].playerId);
-    }
+    console.log('GameRoom.onJoin: onJoin handler completed for client', client.sessionId);
   }
 
   onLeave(client: Client) {
+    console.log('GameRoom.onLeave: Client disconnected:', client.sessionId);
     const seat = this.seatByClient.get(client.sessionId);
+    console.log('GameRoom.onLeave: Client seat=', seat);
     if (seat === undefined) {
+      console.log('GameRoom.onLeave: Client was not seated, ignoring');
       return;
     }
 
     try {
       // @ts-ignore Colyseus allowReconnection exists on Room
       this.allowReconnection(client, RECONNECT_WINDOW_SECONDS);
+      console.log('GameRoom.onLeave: Reconnection window opened for', RECONNECT_WINDOW_SECONDS, 'seconds');
     } catch (err) {
+      console.warn('GameRoom.onLeave: Error opening reconnection window:', err);
       // ignore for compatibility across versions
     }
 
@@ -247,6 +336,17 @@ export class GameRoom extends Room<{ state: LobbyRoomState }> {
     player.connected = false;
     this.state.paused = true;
     this.state.pauseReason = 'A player disconnected during the game. Waiting for reconnection.';
+    console.log('GameRoom.onLeave: Player marked as disconnected, game paused');
+
+    // Unlock room so disconnected player can reconnect
+    try {
+      // @ts-ignore - unlock() exists on Colyseus Room
+      this.unlock();
+      console.log('GameRoom.onLeave: Room unlocked to allow reconnection');
+    } catch (err) {
+      console.warn('GameRoom.onLeave: Error unlocking room:', err);
+      // ignore
+    }
 
     const timeout = setTimeout(() => {
       const current = this.state.players[seat];
@@ -257,6 +357,7 @@ export class GameRoom extends Room<{ state: LobbyRoomState }> {
         current.ready = false;
         current.cardsRemaining = 0;
         this.seatByClient.delete(client.sessionId);
+        console.log('GameRoom.onLeave: Seat cleared after', RECONNECT_WINDOW_SECONDS, 'seconds');
       }
       this.reconnectTimers.delete(client.sessionId);
 
@@ -268,13 +369,6 @@ export class GameRoom extends Room<{ state: LobbyRoomState }> {
     }, RECONNECT_WINDOW_SECONDS * 1000);
 
     this.reconnectTimers.set(client.sessionId, timeout);
-  }
-
-  onDispose() {
-    for (const timer of this.reconnectTimers.values()) {
-      clearTimeout(timer);
-    }
-    this.reconnectTimers.clear();
   }
 
   private handleJoinRoom(client: Client, message: JoinRoomPayload) {
@@ -397,6 +491,21 @@ export class GameRoom extends Room<{ state: LobbyRoomState }> {
     this.privateTrumpSuit = parsed.data.trumpSuit;
     this.state.trumpHolderId = player.playerId;
     sendPrivateTrump(client, parsed.data.trumpSuit, player.playerId);
+    // Move game into playing phase now that trump has been selected privately
+    this.state.phase = 'playing';
+    this.state.activePlayerId = this.state.trumpHolderId;
+
+    // Broadcast updated round snapshot to all connected clients
+    for (const c of this.clients) {
+      const s = this.seatByClient.get(c.sessionId);
+      if (s === undefined) continue;
+      const p = this.state.players[s];
+      try {
+        sendRoundSnapshot(c, createRoundSnapshot(this), p.playerId);
+      } catch (err) {
+        console.warn('Failed to send round snapshot after trump selection to', c.sessionId, err);
+      }
+    }
   }
 
   private handlePlayCard(client: Client, message: PlayCardPayload) {
@@ -490,6 +599,10 @@ export class GameRoom extends Room<{ state: LobbyRoomState }> {
         this.state.pauseReason = roundResult.biddingTeamWon ? 'Bidding team won the round.' : 'Bidding team lost the round.';
         this.state.teamAScore += roundResult.winningTeamId === 'A' ? 1 : 0;
         this.state.teamBScore += roundResult.winningTeamId === 'B' ? 1 : 0;
+        
+        const coolieDeltas = scoreCoolies(roundResult, this.state.currentBid as unknown as Bid, 'biddingRound2');
+        this.state.teamACoolies += coolieDeltas.A;
+        this.state.teamBCoolies += coolieDeltas.B;
       }
     }
   }
@@ -549,7 +662,8 @@ export class GameRoom extends Room<{ state: LobbyRoomState }> {
         return;
       }
 
-      this.state.phase = 'playing';
+      // Bidding finished: prompt the winning bidder to select trump privately
+      this.state.phase = 'selectingTrump';
       this.state.activePlayerId = this.state.trumpHolderId;
     }
   }
@@ -582,5 +696,21 @@ export class GameRoom extends Room<{ state: LobbyRoomState }> {
     }
 
     return orderedPlayers[(currentIndex + 1) % orderedPlayers.length].playerId;
+  }
+
+  private handleEndGame(client: Client, message: EndGamePayload) {
+    const parsed = endGamePayloadSchema.safeParse(message);
+    if (!parsed.success) {
+      this.sendClientError(client, 'invalid_payload', 'Invalid endGame payload');
+      return;
+    }
+
+    if (client.sessionId !== this.state.hostId) {
+      this.sendClientError(client, 'not_host', 'Only the host may end the game manually');
+      return;
+    }
+
+    this.state.phase = 'gameEnd';
+    this.state.pauseReason = 'The host has ended the game.';
   }
 }

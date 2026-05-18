@@ -230,12 +230,19 @@ export class LobbyRoom extends Room<{ state: LobbyRoomState }> {
       return;
     }
 
-    const gameRoom = await matchMaker.createRoom('game', {
-      lobbyRoomId: this.roomId,
-    });
+    try {
+      console.log('LobbyRoom.handleStartGame: Creating game room with lobbyRoomId=', this.roomId);
+      const gameRoom = await matchMaker.createRoom('game', {
+        lobbyRoomId: this.roomId,
+      });
+      console.log('LobbyRoom.handleStartGame: Game room created with roomId=', gameRoom.roomId);
 
-    this.state.gameRoomId = gameRoom.roomId;
-    this.state.gameStarted = true;
-    this.state.phase = 'playing';
+      this.state.gameRoomId = gameRoom.roomId;
+      this.state.gameStarted = true;
+      this.state.phase = 'playing';
+    } catch (err) {
+      console.error('LobbyRoom.handleStartGame: Failed to create game room', err);
+      this.sendClientError(client, 'game_create_failed', 'Failed to create game room');
+    }
   }
 }

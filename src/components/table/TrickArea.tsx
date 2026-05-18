@@ -31,6 +31,7 @@ export function TrickArea({ trickCards }: TrickAreaProps) {
                   <div className={styles.card}>
                     <PlayingCardView code={card.code} />
                   </div>
+                  <div className={styles.playerLabel}>{position === 'bottom' ? 'You' : position === 'top' ? 'Teammate' : position === 'left' ? 'Opponent Left' : 'Opponent Right'}</div>
                 </div>
               );
             })}

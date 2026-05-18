@@ -7,16 +7,104 @@
   align-items: stretch;
   justify-content: center;
   padding: var(--space-lg);
-  overflow: hidden;
+  overflow: auto;
 }
 
 .board {
   position: relative;
   width: min(1120px, 100%);
-  min-height: calc(100vh - (var(--space-lg) * 2));
+  min-height: 100vh;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
   gap: var(--space-lg);
+}
+
+/* Bidding phase layout: minimal, focused on bid and hand */
+.board.biddingLayout {
+  grid-template-rows: auto 1fr auto;
+  grid-template-columns: 1fr;
+}
+
+/* Playing phase layout: full table with opponents and trick area */
+.board.playingLayout {
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+.topStatusRow {
+  display: grid;
+  grid-template-columns: minmax(0, 240px) minmax(160px, 1fr);
+  gap: var(--space-lg);
+  align-items: end;
+  justify-content: start;
+  padding: 0 var(--space-lg);
+}
+
+.centralArea {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+  min-height: 0;
+  flex: 1;
+}
+
+.biddingCenter {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  min-height: 300px;
+}
+
+.selectTrumpCenter {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  min-height: 300px;
+}
+
+.biddingStack {
+  width: min(100%, 420px);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.biddingOrder {
+  background: rgba(255, 255, 255, 0.14);
+  border-radius: var(--radius-md);
+  padding: var(--space-md);
+  color: white;
+}
+
+.biddingOrderLabel {
+  display: block;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: var(--space-sm);
+  opacity: 0.8;
+}
+
+.biddingOrderRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
+.biddingOrderChip {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  padding: var(--space-xs) var(--space-sm);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: white;
+}
+
+.biddingOrderChipActive {
+  background: var(--color-button-primary);
+  color: white;
+  box-shadow: 0 0 16px rgba(244, 169, 53, 0.45);
 }
 
 .middleRow {
@@ -28,7 +116,7 @@
   position: relative;
 }
 
-.bottomArea {
+.handSection {
   display: flex;
   flex-direction: column;
   gap: var(--space-md);
@@ -38,6 +126,52 @@
 .footerActions {
   display: flex;
   justify-content: center;
+}
+
+.selectTrumpRow {
+  display: flex;
+  justify-content: center;
+  padding: var(--space-md);
+}
+
+.selectTrumpControls {
+  display: flex;
+  gap: var(--space-sm);
+  align-items: center;
+}
+
+.selectTrumpLabel {
+  color: var(--color-text-muted);
+  margin-right: var(--space-sm);
+}
+
+.selectTrumpWaiting {
+  color: var(--color-text-muted);
+}
+
+.trumpSuitButton {
+  padding: var(--space-sm) var(--space-md);
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--font-size-md);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-height: 44px;
+  min-width: 80px;
+}
+
+.trumpSuitButton:hover {
+  background: rgba(255, 255, 255, 0.18);
+  border-color: rgba(255, 255, 255, 0.5);
+  transform: scale(1.05);
+}
+
+.trumpSuitButton:active {
+  background: rgba(255, 255, 255, 0.25);
+  transform: scale(0.98);
 }
 
 .secondaryButton {
@@ -55,24 +189,17 @@
   background: rgba(255, 255, 255, 0.24);
 }
 
-.statusRow {
-  display: grid;
-  grid-template-columns: minmax(0, 240px) minmax(160px, 1fr) minmax(0, 360px);
-  gap: var(--space-lg);
-  align-items: end;
-}
-
 @media (max-width: 900px) {
   .board {
     min-height: auto;
   }
 
+  .topStatusRow {
+    grid-template-columns: 1fr;
+  }
+
   .middleRow {
     grid-template-columns: 1fr;
     justify-items: center;
-  }
-
-  .statusRow {
-    grid-template-columns: 1fr;
   }
 }

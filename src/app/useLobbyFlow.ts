@@ -69,55 +69,96 @@ export function useLobbyFlow(): RoomFlowState {
   const currentRoomRef = useRef<Room<{ state: LobbyRoomState }> | null>(null);
   const transitioningToGameRef = useRef(false);
 
-  const attachRoom = (nextRoom: Room<{ state: LobbyRoomState }>) => {
+  const attachRoom = (nextRoom: Room<{ state: LobbyRoomState }>, skipResetFlag = false) => {
     currentRoomRef.current = nextRoom;
     setRoom(nextRoom);
-    intentionalLeaveRef.current = false;
+    if (!skipResetFlag) {
+      intentionalLeaveRef.current = false;
+    }
     transitioningToGameRef.current = false;
+
+    let lastSeenPhase = nextRoom.state?.phase ?? 'unknown';
 
     nextRoom.onStateChange((state) => {
       forceRender((value) => value + 1);
 
-      if (
-        state.phase === 'playing'
-        && state.gameRoomId
-        && nextRoom.roomId !== state.gameRoomId
-        && !transitioningToGameRef.current
-      ) {
-        transitioningToGameRef.current = true;
+      // Only transition to game room ONCE when phase changes to 'playing' (not on every state change)
+      if (state.phase === 'playing' && lastSeenPhase !== 'playing' && !transitioningToGameRef.current) {
+        if (state.gameRoomId && nextRoom.roomId !== state.gameRoomId) {
+          transitioningToGameRef.current = true;
+          console.log('State changed to playing, transitioning to game room', state.gameRoomId);
 
-        const localPlayer = state.players.find((player) => player.playerId === nextRoom.sessionId);
-        if (localPlayer) {
-          void (async () => {
-            try {
-              const gameRoom = await joinGameRoom(state.gameRoomId, localPlayer.seat, localPlayer.playerId, localPlayer.name);
-              intentionalLeaveRef.current = true;
-              nextRoom.leave();
-              attachRoom(gameRoom);
-              setScreen('game');
-            } catch (error) {
-              console.error('Failed to join game room', error);
-              setOverlay({
-                title: 'Game Join Failed',
-                message: 'Unable to enter the game room.',
-                actionLabel: 'Dismiss',
-              });
-              transitioningToGameRef.current = false;
-            }
-          })();
+          const localPlayer = state.players.find((player) => player.playerId === nextRoom.sessionId);
+          if (localPlayer) {
+            void (async () => {
+                try {
+                console.log('Attempting to join game room', state.gameRoomId);
+                const gameRoom = await joinGameRoom(state.gameRoomId, localPlayer.seat, localPlayer.playerId, localPlayer.name);
+                console.log('Successfully joined game room, leaving lobby');
+                // Mark this as an intentional leave and only reset the flag when the old lobby actually fires its onLeave.
+                intentionalLeaveRef.current = true;
+
+                // Install a one-time onLeave handler on the current lobby room so we reset the flag only after it completes.
+                const oldLobby = nextRoom;
+                let oldLeaveHandled = false;
+                try {
+                  oldLobby.onLeave((_code, _reason) => {
+                    if (oldLeaveHandled) return;
+                    oldLeaveHandled = true;
+                    intentionalLeaveRef.current = false;
+                  });
+                } catch (err) {
+                  // If attaching the listener fails for any reason, fall back to clearing the flag after a short delay.
+                  setTimeout(() => (intentionalLeaveRef.current = false), 250);
+                }
+
+                // Trigger lobby leave and attach the game room immediately; the intentionalLeaveRef will remain true
+                // until the old lobby's onLeave handler runs and clears it.
+                nextRoom.leave();
+                attachRoom(gameRoom, true);
+                setScreen('game');
+              } catch (error) {
+                console.error('Failed to join game room', error);
+                setOverlay({
+                  title: 'Game Join Failed',
+                  message: 'Unable to enter the game room.',
+                  actionLabel: 'Dismiss',
+                });
+                transitioningToGameRef.current = false;
+              }
+            })();
+          }
         }
       }
 
-      if (state.phase === 'playing') {
-        setScreen('game');
-      }
+      lastSeenPhase = state.phase;
     });
 
     nextRoom.onMessage('privateHand', (message: { playerId: string; cards: Array<{ code: string }> }) => {
       setMyHand(message.cards.map((card) => card.code));
     });
 
+    nextRoom.onMessage('roundSnapshot', (message: unknown) => {
+      // Handle round state snapshot (game phase, bids, tricks, etc.)
+      console.log('Received roundSnapshot:', message);
+    });
+
+    nextRoom.onMessage('privateTrump', (message: unknown) => {
+      // Handle private trump suit if this player is trump holder
+      console.log('Received privateTrump:', message);
+    });
+
+    nextRoom.onMessage('error', (message: { code: string; message: string }) => {
+      console.error('Server error:', message.code, message.message);
+      setOverlay({
+        title: 'Server Error',
+        message: message.message || 'An error occurred on the server',
+        actionLabel: 'Dismiss',
+      });
+    });
+
     nextRoom.onLeave((code, reason) => {
+      console.log('Room onLeave triggered:', { roomId: nextRoom.roomId, code, reason, intentionalLeave: intentionalLeaveRef.current });
       if (intentionalLeaveRef.current || code === 1000) {
         intentionalLeaveRef.current = false;
         return;
@@ -134,7 +175,8 @@ export function useLobbyFlow(): RoomFlowState {
       setMyHand([]);
     });
 
-    nextRoom.onError((_code, message) => {
+    nextRoom.onError((code, message) => {
+      console.error('Room onError triggered:', { roomId: nextRoom.roomId, code, message });
       setOverlay({
         title: 'Connection Error',
         message: String(message),
@@ -149,20 +191,18 @@ export function useLobbyFlow(): RoomFlowState {
       try {
         const raw = sessionStorage.getItem('colyseus_session');
         if (!raw) return;
-        const parsed = JSON.parse(raw) as { roomId?: string; sessionId?: string } | string;
-        let roomId: string | undefined;
-        let sessionId: string | undefined;
+        const parsed = JSON.parse(raw) as { roomId?: string; sessionId?: string; reconnectionToken?: string } | string;
+        let reconnectionToken: string | undefined;
 
         if (typeof parsed === 'string') {
-          sessionId = parsed as string;
+          reconnectionToken = parsed as string;
         } else {
-          roomId = parsed.roomId;
-          sessionId = parsed.sessionId;
+          reconnectionToken = parsed.reconnectionToken;
         }
 
-        if (!roomId || !sessionId) return;
+        if (!reconnectionToken) return;
 
-        const rejoined = await reconnectToRoom(roomId, sessionId);
+        const rejoined = await reconnectToRoom(reconnectionToken);
         if (rejoined) {
           attachRoom(rejoined);
           setScreen('lobby');

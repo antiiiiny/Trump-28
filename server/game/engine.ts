@@ -49,6 +49,8 @@ export interface RoundResult {
   winningTeamId: TeamId;
 }
 
+export type CoolieUpdate = Record<TeamId, number>;
+
 const trickRankOrder: Rank[] = ['J', '9', 'A', '10', 'K', 'Q', '8', '7'];
 const rankStrength = new Map<Rank, number>(trickRankOrder.map((rank, index) => [rank, trickRankOrder.length - index]));
 
@@ -177,6 +179,14 @@ export function validateBid(bid: Bid, state: RulesState): BidValidationResult {
     return { valid: false, reason: 'Players who have passed may not bid again.' };
   }
 
+  if (bid.passed) {
+    if (state.phase === 'biddingRound1' || state.phase === 'biddingRound2') {
+      return { valid: true };
+    }
+
+    return { valid: false, reason: 'Bids are only allowed during the bidding phases.' };
+  }
+
   if (state.currentBid && bid.value <= state.currentBid.value) {
     return { valid: false, reason: 'Bid must be strictly higher than the current bid.' };
   }
@@ -300,4 +310,24 @@ export function scoreRound(tricks: Trick[], bid: Bid, playerTeamsById: Record<st
     biddingTeamWon,
     winningTeamId: biddingTeamWon ? biddingTeamId : opposingTeamId,
   };
+}
+
+export function scoreCoolies(result: RoundResult, bid: Bid, phase: GamePhase): CoolieUpdate {
+  const category = getBidCategory(bid, phase);
+  const deltas: Record<TeamId, number> = { A: 0, B: 0 };
+  const opposingTeamId: TeamId = result.biddingTeamId === 'A' ? 'B' : 'A';
+
+  if (result.biddingTeamWon) {
+    if (category === 'normal') deltas[opposingTeamId] = 1;
+    else if (category === 'honours') deltas[opposingTeamId] = 2;
+    else if (category === 'disti') deltas[opposingTeamId] = 3;
+    else if (category === 'thani') deltas[opposingTeamId] = 4;
+  } else {
+    if (category === 'normal') deltas[result.biddingTeamId] = 2;
+    else if (category === 'honours') deltas[result.biddingTeamId] = 3;
+    else if (category === 'disti') deltas[result.biddingTeamId] = 4;
+    else if (category === 'thani') deltas[result.biddingTeamId] = 5;
+  }
+
+  return deltas;
 }

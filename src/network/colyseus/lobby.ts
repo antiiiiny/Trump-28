@@ -21,7 +21,14 @@ export async function createLobbyRoom(playerName: string): Promise<LobbyRoomConn
   room.send('joinRoom', joinRoomSchema.parse(payload));
   // store session id for reconnect attempts
   try {
-    sessionStorage.setItem('colyseus_session', JSON.stringify({ roomId: room.roomId, sessionId: room.sessionId }));
+    sessionStorage.setItem(
+      'colyseus_session',
+      JSON.stringify({
+        roomId: room.roomId,
+        sessionId: room.sessionId,
+        reconnectionToken: room.reconnectionToken ?? '',
+      }),
+    );
   } catch (err) {
     // ignore
   }
@@ -34,7 +41,14 @@ export async function joinLobbyRoom(roomCode: string, playerName: string): Promi
   const room = await colyseusClient.joinById<LobbyRoomState>(roomCode);
   room.send('joinRoom', joinRoomSchema.parse(payload));
   try {
-    sessionStorage.setItem('colyseus_session', JSON.stringify({ roomId: room.roomId, sessionId: room.sessionId }));
+    sessionStorage.setItem(
+      'colyseus_session',
+      JSON.stringify({
+        roomId: room.roomId,
+        sessionId: room.sessionId,
+        reconnectionToken: room.reconnectionToken ?? '',
+      }),
+    );
   } catch (err) {
     // ignore
   }

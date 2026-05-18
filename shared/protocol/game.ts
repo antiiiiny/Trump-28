@@ -5,7 +5,7 @@ import type { Trick } from '../models/trick';
 import type { Card } from '../models/card';
 import type { Rank } from '../enums/rank';
 
-const gamePhaseSchema = z.enum(['waiting', 'biddingRound1', 'biddingRound2', 'playing', 'roundEnd', 'gameEnd']);
+const gamePhaseSchema = z.enum(['waiting', 'biddingRound1', 'biddingRound2', 'selectingTrump', 'playing', 'roundEnd', 'gameEnd']);
 const rankSchema = z.enum(['A', 'K', 'Q', 'J', '10', '9', '8', '7']) satisfies z.ZodType<Rank>;
 const suitSchema = z.enum(['H', 'D', 'C', 'S']);
 
@@ -14,14 +14,14 @@ const cardSchema = z.object({
   suit: suitSchema,
   code: z.string(),
   points: z.number(),
-}) satisfies z.ZodType<Card>;
+}) as z.ZodType<Card>;
 
 const bidSchema = z.object({
   playerId: z.string(),
   value: z.number(),
   passed: z.boolean(),
   isHonours: z.boolean(),
-}) satisfies z.ZodType<Bid>;
+}) as z.ZodType<Bid>;
 
 const trickCardSchema = z.object({
   playerId: z.string(),
@@ -32,7 +32,7 @@ const trickSchema = z.object({
   cards: z.array(trickCardSchema),
   winnerId: z.string().nullable(),
   leadSuit: suitSchema.nullable(),
-}) satisfies z.ZodType<Trick>;
+}) as z.ZodType<Trick>;
 
 export const privateHandPayloadSchema = z.object({
   playerId: z.string(),
@@ -61,6 +61,10 @@ export const playCardPayloadSchema = z.object({
   card: cardSchema,
 });
 
+export const endGamePayloadSchema = z.object({
+  playerId: z.string(),
+});
+
 export const roundSnapshotPayloadSchema = z.object({
   phase: gamePhaseSchema,
   tricks: z.array(trickSchema),
@@ -79,3 +83,4 @@ export type PlaceBidPayload = z.infer<typeof placeBidPayloadSchema>;
 export type SelectTrumpPayload = z.infer<typeof selectTrumpPayloadSchema>;
 export type PlayCardPayload = z.infer<typeof playCardPayloadSchema>;
 export type RoundSnapshotPayload = z.infer<typeof roundSnapshotPayloadSchema>;
+export type EndGamePayload = z.infer<typeof endGamePayloadSchema>;

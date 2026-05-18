@@ -3,7 +3,7 @@ import type { Bid } from '../../shared/models/bid';
 import type { Card } from '../../shared/models/card';
 import type { Trick } from '../../shared/models/trick';
 import type { RulesPlayer, RulesState } from './engine';
-import { getNextEligibleBidderId, getNextPlayerId, isBiddingComplete, resolveTrick, scoreRound, validateBid, validateCardPlay } from './engine';
+import { getNextEligibleBidderId, getNextPlayerId, isBiddingComplete, resolveTrick, scoreCoolies, scoreRound, validateBid, validateCardPlay } from './engine';
 
 function createCard(rank: Card['rank'], suit: Card['suit']): Card {
   const points = rank === 'J' ? 3 : rank === '9' ? 2 : rank === 'A' || rank === '10' ? 1 : 0;
@@ -285,5 +285,27 @@ describe('engine', () => {
       biddingTeamWon: false,
       winningTeamId: 'B',
     });
+  });
+
+  it('calculates coolie deltas based on bid category and win/loss', () => {
+    // Normal (round 1, bid 14-19)
+    const normalBid = createBid('p0', 16);
+    expect(scoreCoolies({ biddingTeamWon: true, biddingTeamId: 'A' } as any, normalBid, 'biddingRound1')).toEqual({ A: 0, B: 1 });
+    expect(scoreCoolies({ biddingTeamWon: false, biddingTeamId: 'A' } as any, normalBid, 'biddingRound1')).toEqual({ A: 2, B: 0 });
+
+    // Honours (round 1, bid 20-28)
+    const honoursBid = createBid('p0', 20, false, true);
+    expect(scoreCoolies({ biddingTeamWon: true, biddingTeamId: 'A' } as any, honoursBid, 'biddingRound1')).toEqual({ A: 0, B: 2 });
+    expect(scoreCoolies({ biddingTeamWon: false, biddingTeamId: 'A' } as any, honoursBid, 'biddingRound1')).toEqual({ A: 3, B: 0 });
+
+    // Disti (round 2, bid 24-27)
+    const distiBid = createBid('p0', 24);
+    expect(scoreCoolies({ biddingTeamWon: true, biddingTeamId: 'A' } as any, distiBid, 'biddingRound2')).toEqual({ A: 0, B: 3 });
+    expect(scoreCoolies({ biddingTeamWon: false, biddingTeamId: 'A' } as any, distiBid, 'biddingRound2')).toEqual({ A: 4, B: 0 });
+
+    // Thani (round 2, bid 28)
+    const thaniBid = createBid('p0', 28);
+    expect(scoreCoolies({ biddingTeamWon: true, biddingTeamId: 'A' } as any, thaniBid, 'biddingRound2')).toEqual({ A: 0, B: 4 });
+    expect(scoreCoolies({ biddingTeamWon: false, biddingTeamId: 'A' } as any, thaniBid, 'biddingRound2')).toEqual({ A: 5, B: 0 });
   });
 });
