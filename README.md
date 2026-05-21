@@ -21,6 +21,29 @@ npm run server
 npm run dev
 ```
 
+## Production deploy (Vercel + Railway)
+
+Recommended split:
+
+- Frontend (Vite): Vercel
+- Backend (Colyseus): Railway
+
+### Backend (Railway)
+
+- Start command: `npm run server`
+- The server already supports Railway dynamic ports via `process.env.PORT`.
+- After deploy, copy your backend domain, for example:
+   - `https://your-backend.up.railway.app`
+
+### Frontend (Vercel)
+
+- Build command: `npm run build`
+- Output directory: `dist`
+- Add environment variable:
+   - `VITE_COLYSEUS_ENDPOINT=wss://your-backend.up.railway.app`
+
+Important: after setting `VITE_COLYSEUS_ENDPOINT`, redeploy frontend so Vite picks up the value at build time.
+
 Then open the app in one or more browser tabs:
 
 1. Create a room in the first tab.

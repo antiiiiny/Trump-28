@@ -9,4 +9,5 @@ const server = defineServer({
   },
 });
 
-server.listen(2567);
+const port = Number(process.env.PORT ?? 2567);
+server.listen(port);
