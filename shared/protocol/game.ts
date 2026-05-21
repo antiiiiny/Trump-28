@@ -56,6 +56,14 @@ export const selectTrumpPayloadSchema = z.object({
   trumpSuit: suitSchema,
 });
 
+export const requestRematchPayloadSchema = z.object({
+  playerId: z.string(),
+});
+
+export const revealTrumpPayloadSchema = z.object({
+  playerId: z.string(),
+});
+
 export const playCardPayloadSchema = z.object({
   playerId: z.string(),
   card: cardSchema,
@@ -81,6 +89,8 @@ export type PrivateHandPayload = z.infer<typeof privateHandPayloadSchema>;
 export type PrivateTrumpPayload = z.infer<typeof privateTrumpPayloadSchema>;
 export type PlaceBidPayload = z.infer<typeof placeBidPayloadSchema>;
 export type SelectTrumpPayload = z.infer<typeof selectTrumpPayloadSchema>;
+export type RequestRematchPayload = z.infer<typeof requestRematchPayloadSchema>;
+export type RevealTrumpPayload = z.infer<typeof revealTrumpPayloadSchema>;
 export type PlayCardPayload = z.infer<typeof playCardPayloadSchema>;
 export type RoundSnapshotPayload = z.infer<typeof roundSnapshotPayloadSchema>;
 export type EndGamePayload = z.infer<typeof endGamePayloadSchema>;

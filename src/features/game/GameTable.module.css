@@ -108,12 +108,14 @@
 }
 
 .middleRow {
-  display: grid;
-  grid-template-columns: minmax(120px, 1fr) minmax(260px, 1.4fr) minmax(120px, 1fr);
+  display: flex;
   align-items: center;
+  justify-content: center;
   gap: var(--space-lg);
   min-height: 0;
   position: relative;
+  width: 100%;
+  min-height: 340px;
 }
 
 .handSection {
@@ -147,6 +149,52 @@
 
 .selectTrumpWaiting {
   color: var(--color-text-muted);
+}
+
+.trumpStatusBanner {
+  align-self: center;
+  background: rgba(255, 255, 255, 0.16);
+  color: white;
+  border-radius: 999px;
+  padding: var(--space-xs) var(--space-lg);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+}
+
+.bidHistory {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius-md);
+  padding: var(--space-md);
+  color: white;
+}
+
+.bidHistoryLabel {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  opacity: 0.8;
+}
+
+.bidHistoryRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
+.bidHistoryChip {
+  background: rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  padding: var(--space-xs) var(--space-sm);
+  font-size: var(--font-size-sm);
+}
+
+.handActions {
+  display: flex;
+  justify-content: center;
 }
 
 .trumpSuitButton {
@@ -199,7 +247,6 @@
   }
 
   .middleRow {
-    grid-template-columns: 1fr;
-    justify-items: center;
+    min-height: 280px;
   }
 }

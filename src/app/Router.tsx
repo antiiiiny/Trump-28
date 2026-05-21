@@ -55,7 +55,7 @@ export function Router() {
       case 'game':
         return <GameTable room={room} myHand={myHand} onNavigate={(nextScreen) => goToScreen(nextScreen)} />;
       case 'results':
-        return <Results onNavigate={(nextScreen) => goToScreen(nextScreen)} />;
+        return <Results room={room} onNavigate={(nextScreen) => goToScreen(nextScreen)} onLeaveRoom={leaveRoom} />;
       default:
         return <Home onNavigate={() => goToScreen('room')} />;
     }

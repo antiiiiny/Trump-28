@@ -22,6 +22,17 @@ export class GameTrickState extends Schema {
   @type('string') leadSuit = '';
 }
 
+export class GameRoundSummaryState extends Schema {
+  @type('number') roundNumber = 0;
+  @type('string') biddingTeamId: TeamId = 'A';
+  @type('string') winningTeamId: TeamId = 'A';
+  @type('number') bidValue = 0;
+  @type('string') bidPlayerId = '';
+  @type('number') biddingTeamPoints = 0;
+  @type('number') opposingTeamPoints = 0;
+  @type('boolean') biddingTeamWon = false;
+}
+
 export class LobbyPlayerState extends Schema {
   @type('string') playerId = '';
   @type('string') name = '';
@@ -55,6 +66,7 @@ export class LobbyRoomState extends Schema {
   @type([GameBidState]) bids = new ArraySchema<GameBidState>();
   @type(GameTrickState) currentTrick = new GameTrickState();
   @type([GameTrickState]) tricks = new ArraySchema<GameTrickState>();
+  @type(GameRoundSummaryState) lastRoundSummary = new GameRoundSummaryState();
   @type([LobbyPlayerState]) players = new ArraySchema<LobbyPlayerState>();
 }
 

@@ -74,8 +74,9 @@ J, 9, A, 10, K, Q, 8, 7
 
 ### Deal sequence
 1. Deal 4 cards to each player → bidding round 1 (phase: `biddingRound1`)
-2. Deal remaining 4 cards to each player → bidding round 2 (phase: `biddingRound2`)
-3. Play tricks (phase: `playing`)
+2. Winning bidder selects trump suit → trump selection phase (phase: `selectingTrump`)
+3. Deal remaining 4 cards to each player → bidding round 2 (phase: `biddingRound2`)
+4. Play tricks (phase: `playing`)
 
 ### Bid categories
 ```ts
@@ -90,16 +91,20 @@ type BidCategory = 'normal' | 'honours' | 'disti' | 'thani';
 - First player to act in round 1 MUST bid — minimum 14. Cannot pass on opening.
 - Each subsequent bid must be strictly higher than the current bid.
 - If your teammate has already passed, you may only bid 20 or higher (Honours).
-- After second 4 cards are dealt (round 2), minimum bid is 24. Players who passed in round 1 cannot re-enter.
+- After round 1 bidding completes, the winning bidder selects trump suit.
+- After trump selection, round 2 bidding begins with minimum bid 24. Only players who did NOT pass in round 1 may bid.
+- In round 2, any eligible player can bid above 24 (not just the round 1 winner). Bids must still be strictly higher than current bid.
 - Maximum bid is 28. No bids above 28.
 - Bidding ends when all other players pass.
 
 ### Trump rules
-- Winning bidder privately selects trump suit — hidden from all other players until revealed.
+- Winning bidder privately selects trump suit after round 1 bidding ends — hidden from all other players until revealed.
 - Winning bidder leads the first trick.
 - Winning bidder CANNOT lead with a trump card.
-- Any player may only play trump if they have no cards of the led suit.
-- Trump is revealed the first time a trump card is legally played.
+- A player must follow suit if they have cards of the led suit.
+- If a player cannot follow suit and has trump, they must click `Reveal Trump` before playing a trump card.
+- If a player has neither the led suit nor trump, they may play any card.
+- Trump is revealed explicitly by the active player through a `Reveal Trump` action and is then visible to all players.
 
 ### Round result and coolie scoring
 Coolies are per team. Both teams start at 0. The 5th coolie is the joker (special shame token).
@@ -157,3 +162,47 @@ If implementation details are ambiguous:
 
 ## Prompting output format
 When generating code: list touched files first, explain assumptions briefly, then generate complete code. Mention edge cases when relevant.
+
+## Stage 6 Addendum - Results, Rematch & Polish
+
+### Current stage goal
+Wire up the results screen with real round and game data, implement rematch flow, end game handling, and polish any remaining UI rough edges.
+
+### Results screen
+- Show winning team (A or B) and player names for the round just played.
+- Show point breakdown: how many trick points each team scored.
+- Show bid vs actual score, for example: "Team A bid 18, scored 21 - Win".
+- Show current coolie count per team; display the joker distinctly when a team is at 5 coolies.
+- Coolies accumulate across rounds and are never reset.
+- Host sees an "End Game" button at all times and sends `endGame` intent to the server.
+- Non-host players see a message indicating only the host can end the game.
+- Buttons: Play Again (next round), End Game (host only).
+
+### End game flow
+- Host clicks End Game and the server broadcasts `gameEnded` to all clients.
+- All players are taken to a final summary screen.
+- Final summary shows total coolie count per team across all rounds played.
+- There is no automatic game-end condition; the game runs indefinitely until the host ends it.
+- Do not hardcode any round win target.
+
+### Rematch flow (next round)
+- Host clicks Play Again and sends `requestRematch` intent.
+- Server resets RoundState only; teams, seats, and coolie counts are preserved.
+- Dealer rotates one seat clockwise each round.
+- All players return to a ready state before the next round begins.
+- If a player leaves during the results screen, handle it gracefully by showing the lobby with rejoining option.
+
+### Polish checklist
+- Trick area correctly shows compass layout (N/S/E/W cards).
+- Trump revealed indicator visible to all players once revealed.
+- Bid history visible during play, including what was bid and by whom.
+- Coolie display updates in real time from Colyseus state.
+- Reconnect overlay tested with a real disconnect scenario.
+- All screens tested at 375px width.
+
+### Do not add
+- Matchmaking or public rooms.
+- Chat or social features.
+- Animations beyond simple CSS transitions.
+- Persistent leaderboards or accounts.
+- Any automatic game-end condition based on round wins or coolie count.

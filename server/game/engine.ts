@@ -38,7 +38,11 @@ export interface BidValidationResult {
 export interface CardPlayValidationResult {
   valid: boolean;
   reason?: string;
-  revealsTrump: boolean;
+}
+
+export interface TrumpRevealValidationResult {
+  valid: boolean;
+  reason?: string;
 }
 
 export interface RoundResult {
@@ -230,42 +234,80 @@ export function validateBid(bid: Bid, state: RulesState): BidValidationResult {
 export function validateCardPlay(card: Card, playerId: string, state: RulesState): CardPlayValidationResult {
   const player = getPlayerById(state.players, playerId);
   if (!player) {
-    return { valid: false, reason: 'Unknown player.', revealsTrump: false };
+    return { valid: false, reason: 'Unknown player.' };
   }
 
   if (state.activePlayerId !== playerId) {
-    return { valid: false, reason: 'It is not this player\'s turn.', revealsTrump: false };
+    return { valid: false, reason: 'It is not this player\'s turn.' };
   }
 
   const hand = state.handsByPlayerId[playerId] ?? [];
   if (!hasCard(hand, card)) {
-    return { valid: false, reason: 'Card is not in the player\'s hand.', revealsTrump: false };
+    return { valid: false, reason: 'Card is not in the player\'s hand.' };
   }
 
   if (state.phase === 'playing' && !state.trumpSuit) {
-    return { valid: false, reason: 'Trump suit has not been selected yet.', revealsTrump: false };
+    return { valid: false, reason: 'Trump suit has not been selected yet.' };
   }
 
   const openingTrick = state.tricks.length === 0 && state.currentTrick.cards.length === 0;
   if (openingTrick && playerId === state.trumpHolderId && state.trumpSuit && card.suit === state.trumpSuit) {
-    return { valid: false, reason: 'Winning bidder cannot lead with trump.', revealsTrump: false };
+    return { valid: false, reason: 'Winning bidder cannot lead with trump.' };
   }
 
   const leadSuit = getLeadSuit(state.currentTrick);
   const playerHasLeadSuit = leadSuit
     ? hand.some((handCard) => handCard.suit === leadSuit)
     : false;
+  const playerHasTrump = state.trumpSuit ? hand.some((handCard) => handCard.suit === state.trumpSuit) : false;
 
   if (leadSuit && state.currentTrick.cards.length > 0 && playerHasLeadSuit && card.suit !== leadSuit) {
-    return { valid: false, reason: 'Player must follow suit.', revealsTrump: false };
+    return { valid: false, reason: 'Player must follow suit.' };
   }
 
-  const revealsTrump = Boolean(state.trumpSuit && card.suit === state.trumpSuit && !state.trumpRevealed);
+  if (leadSuit && state.currentTrick.cards.length > 0 && !playerHasLeadSuit && playerHasTrump && !state.trumpRevealed) {
+    return { valid: false, reason: 'Reveal trump before playing a trump card.' };
+  }
+
+  if (leadSuit && state.currentTrick.cards.length > 0 && !playerHasLeadSuit && playerHasTrump && state.trumpRevealed && card.suit !== state.trumpSuit) {
+    return { valid: false, reason: 'Must play trump when you cannot follow suit.' };
+  }
 
   return {
     valid: true,
-    revealsTrump,
   };
+}
+
+export function validateTrumpReveal(state: RulesState, playerId: string): TrumpRevealValidationResult {
+  const player = getPlayerById(state.players, playerId);
+  if (!player) {
+    return { valid: false, reason: 'Unknown player.' };
+  }
+
+  if (state.activePlayerId !== playerId) {
+    return { valid: false, reason: 'It is not this player\'s turn.' };
+  }
+
+  if (state.phase !== 'playing') {
+    return { valid: false, reason: 'Trump can only be revealed during play.' };
+  }
+
+  if (state.trumpRevealed) {
+    return { valid: false, reason: 'Trump has already been revealed.' };
+  }
+
+  const leadSuit = getLeadSuit(state.currentTrick);
+  if (!leadSuit || state.currentTrick.cards.length === 0) {
+    return { valid: false, reason: 'Trump can only be revealed after a suit is led.' };
+  }
+
+  const hand = state.handsByPlayerId[playerId] ?? [];
+  const playerHasLeadSuit = hand.some((handCard) => handCard.suit === leadSuit);
+  if (playerHasLeadSuit) {
+    return { valid: false, reason: 'You must follow suit if you can.' };
+  }
+
+  return { valid: true };
 }
 
 export function resolveTrick(trick: Trick, trumpSuit: Suit): string {

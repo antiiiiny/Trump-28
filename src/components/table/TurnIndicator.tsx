@@ -4,12 +4,16 @@ interface TurnIndicatorProps {
   activePlayer: string;
   isYourTurn: boolean;
   phaseLabel?: string;
+  trumpLabel?: string;
 }
 
-export function TurnIndicator({ activePlayer, isYourTurn, phaseLabel }: TurnIndicatorProps) {
+export function TurnIndicator({ activePlayer, isYourTurn, phaseLabel, trumpLabel }: TurnIndicatorProps) {
   return (
     <div className={`${styles.container} ${isYourTurn ? styles.active : ''}`} aria-live="polite">
-      {phaseLabel ? <span className={styles.phase}>{phaseLabel}</span> : null}
+      <div className={styles.stack}>
+        {phaseLabel ? <span className={styles.phase}>{phaseLabel}</span> : null}
+        {trumpLabel ? <span className={styles.trump}>{trumpLabel}</span> : null}
+      </div>
       {isYourTurn ? (
         <>
           <div className={styles.pulse} />

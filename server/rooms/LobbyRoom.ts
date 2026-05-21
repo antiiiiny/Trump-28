@@ -234,6 +234,7 @@ export class LobbyRoom extends Room<{ state: LobbyRoomState }> {
       console.log('LobbyRoom.handleStartGame: Creating game room with lobbyRoomId=', this.roomId);
       const gameRoom = await matchMaker.createRoom('game', {
         lobbyRoomId: this.roomId,
+        hostId: this.state.hostId,
       });
       console.log('LobbyRoom.handleStartGame: Game room created with roomId=', gameRoom.roomId);
 

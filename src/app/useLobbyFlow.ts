@@ -82,6 +82,18 @@ export function useLobbyFlow(): RoomFlowState {
     nextRoom.onStateChange((state) => {
       forceRender((value) => value + 1);
 
+      if (state.phase === 'roundEnd' && lastSeenPhase !== 'roundEnd') {
+        setScreen('results');
+      }
+
+      if (state.phase === 'gameEnd') {
+        setScreen('results');
+      }
+
+      if (state.phase === 'biddingRound1' && lastSeenPhase === 'roundEnd') {
+        setScreen('game');
+      }
+
       // Only transition to game room ONCE when phase changes to 'playing' (not on every state change)
       if (state.phase === 'playing' && lastSeenPhase !== 'playing' && !transitioningToGameRef.current) {
         if (state.gameRoomId && nextRoom.roomId !== state.gameRoomId) {
@@ -146,6 +158,16 @@ export function useLobbyFlow(): RoomFlowState {
     nextRoom.onMessage('privateTrump', (message: unknown) => {
       // Handle private trump suit if this player is trump holder
       console.log('Received privateTrump:', message);
+    });
+
+    nextRoom.onMessage('gameEnded', (message: unknown) => {
+      console.log('Received gameEnded:', message);
+      setScreen('results');
+    });
+
+    nextRoom.onMessage('rematchStarted', (message: unknown) => {
+      console.log('Received rematchStarted:', message);
+      setScreen('game');
     });
 
     nextRoom.onMessage('error', (message: { code: string; message: string }) => {

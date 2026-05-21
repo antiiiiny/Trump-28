@@ -148,17 +148,20 @@ The build currently passes.
 
 ### What was just implemented
 
-- **New game phase:** Added `selectingTrump` phase to `shared/enums/phase.ts` and `shared/protocol/game.ts`. This phase occurs between the end of round-2 bidding and the start of card play, allowing the winning bidder to privately select the trump suit before play begins.
+- **New game phase:** Added `selectingTrump` phase to `shared/enums/phase.ts` and `shared/protocol/game.ts`. This phase now occurs immediately after round 1 bidding, before the second 4 cards are dealt.
 
 - **Server-side flow:** Patched `server/rooms/GameRoom.ts` to:
-  - Transition to `selectingTrump` after round-2 bidding completes (in `advanceBiddingState()`).
-  - Accept `selectTrump` messages and set `privateTrumpSuit` and `state.trumpSuit` on the server.
-  - Transition to `playing` phase and broadcast updated snapshots to all clients so the UI updates in lockstep.
+   - Transition to `selectingTrump` after round-1 bidding completes.
+   - Accept `selectTrump` messages and move the room into round-2 bidding after the trump suit is chosen.
+   - Accept `revealTrump` messages so the active player can explicitly reveal trump to everyone.
+   - Accept `requestRematch` and `endGame` intents for round reset and final summary flow.
 
 - **Client-side UI:** Updated `src/features/game/GameTable.tsx` and `src/features/game/GameTable.module.css` to render trump-selection controls when `phase === 'selectingTrump'`:
   - If the local player is the `trumpHolderId`, show 4 suit buttons (Hearts, Diamonds, Clubs, Spades).
   - If the local player is not the trump holder, show a waiting message.
   - Wire `sendSelectTrump()` helper from `src/network/colyseus/game.ts`.
+
+- **Trump reveal UI:** The play screen now shows a `Reveal Trump` button when the active player cannot follow the led suit, and the revealed trump suit is shown to all players.
 
 - **Session persistence:** Token-based reconnection now stores player identity and reconnection token in `sessionStorage`, preventing duplicate joins and enabling silent reconnect across tab reloads.
 
@@ -167,22 +170,23 @@ The build currently passes.
 ### Current state
 
 **What works:**
-- Full bidding loop (rounds 1 & 2) with pass handling, honours rules, and teammate-passed gating.
+- Full bidding loop with round 1 trump selection, round 2 bidding, pass handling, honours rules, and teammate-passed gating.
 - Trump selection UI for the winning bidder (4 suit buttons).
+- Manual trump reveal action during play.
 - Reconnection with session token storage.
 - Trick resolution, scoring, and coolie tracking.
 - Live room-state sync and private hand/trump delivery.
 
 **What needs verification / remaining work:**
 1. **Integration test:** Start server + client (4 browser tabs), run through bidding → trump selection → play. Confirm:
-   - Trump selection UI appears after round-2 bidding ends.
-   - Winning bidder can click a suit and move to `playing` phase.
+   - Trump selection UI appears after round-1 bidding ends.
+   - Winning bidder can click a suit and move the room into round-2 bidding.
    - All clients receive updated snapshots and the game proceeds to tricks.
 
 2. **Trump visibility:** Currently `state.trumpSuit` is set on selection and later revealed (not hidden). Verify this behavior is correct:
    - Private trump holder sees their own suit immediately.
-   - Other players see trump only when a trump card is played (or after selection if rules require).
-   - Server-side: review `sendPrivateTrump()` calls and trump-reveal logic in `handlePlayCard()`.
+   - Other players see trump only after the active player explicitly reveals it.
+   - Server-side: review `sendPrivateTrump()` calls and `handleRevealTrump()`.
 
 3. **UX improvements:**
    - Show selected trump suit (icon + label) in `TurnIndicator` or `ScorePanel` after selection.
@@ -191,6 +195,11 @@ The build currently passes.
 4. **Testing:**
    - Unit tests for `validateCardPlay()` edge cases (leading with trump, follow suit, trump reveal).
    - Quick test of all 4 suits to ensure no card-code bugs.
+
+### Stage 6 follow-up
+
+- Results, rematch, and end-game handling now need live browser verification.
+- The results screen should reflect `lastRoundSummary`, the current coolie counts, and host-only rematch/end-game controls.
 
 ### Key files to inspect if debugging
 

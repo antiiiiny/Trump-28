@@ -7,7 +7,7 @@ import { PlayerHand } from '../../components/table/PlayerHand';
 import { BidPanel } from '../../components/table/BidPanel';
 import { ScorePanel } from '../../components/table/ScorePanel';
 import { TurnIndicator } from '../../components/table/TurnIndicator';
-import { getStoredGameSession, sendPlaceBid, sendPass, sendPlayCard, sendSelectTrump } from '../../network/colyseus/game';
+import { getStoredGameSession, sendPlaceBid, sendPass, sendPlayCard, sendRevealTrump, sendSelectTrump } from '../../network/colyseus/game';
 import styles from './GameTable.module.css';
 
 interface GameTableProps {
@@ -85,8 +85,13 @@ export function GameTable({ onNavigate, room, myHand = [] }: GameTableProps) {
     };
   }).filter(Boolean) as Array<{ playerId: string; code: string; position: 'top' | 'left' | 'right' | 'bottom' }>;
 
-  // Hand cards
-  const handCards = myHand.length > 0 ? myHand : [];
+  const handCards = myHand;
+  const currentLeadSuit = roomState?.currentTrick?.leadSuit || '';
+  const hasLeadSuit = Boolean(currentLeadSuit) && handCards.some((code) => code.slice(-1) === currentLeadSuit);
+  const canRevealTrump = isPlayingPhase && isYourTurn && Boolean(currentLeadSuit) && !roomState?.trumpRevealed && !hasLeadSuit;
+  const trumpLabel = roomState?.trumpRevealed && roomState.trumpSuit
+    ? `Trump revealed: ${roomState.trumpSuit === 'H' ? 'Hearts' : roomState.trumpSuit === 'D' ? 'Diamonds' : roomState.trumpSuit === 'C' ? 'Clubs' : 'Spades'}`
+    : '';
 
   // Bidding handlers
   const handlePlaceBid = (bid: number) => {
@@ -114,6 +119,11 @@ export function GameTable({ onNavigate, room, myHand = [] }: GameTableProps) {
     }
 
     setSelectedCard(selectedCard === code ? undefined : code);
+  };
+
+  const handleRevealTrump = () => {
+    if (!room) return;
+    sendRevealTrump(room);
   };
 
   const handleSelectTrump = (suit: string) => {
@@ -165,8 +175,28 @@ export function GameTable({ onNavigate, room, myHand = [] }: GameTableProps) {
               activePlayer={activeBidderName}
               isYourTurn={isYourTurn}
               phaseLabel={isBiddingPhase ? 'Bidding' : isSelectingTrump ? 'Selecting Trump' : isPlayingPhase ? 'Playing' : phase}
+              trumpLabel={trumpLabel}
             />
           </div>
+
+          {trumpLabel ? <div className={styles.trumpStatusBanner}>{trumpLabel}</div> : null}
+
+          {roomState?.bids?.length ? (
+            <div className={styles.bidHistory}>
+              <span className={styles.bidHistoryLabel}>Bid history</span>
+              <div className={styles.bidHistoryRow}>
+                {roomState.bids.map((bid, index) => {
+                  const player = players.find((candidate) => candidate.playerId === bid.playerId);
+                  const label = bid.passed ? 'Pass' : `${bid.value}${bid.isHonours ? 'H' : ''}`;
+                  return (
+                    <span key={`${bid.playerId}-${index}`} className={styles.bidHistoryChip}>
+                      {player?.name || 'Player'}: {label}
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
 
           {isSelectingTrump ? (
             <div className={styles.selectTrumpCenter}>
@@ -222,6 +252,14 @@ export function GameTable({ onNavigate, room, myHand = [] }: GameTableProps) {
               Show Results
             </button>
           </div>
+
+          {canRevealTrump ? (
+            <div className={styles.handActions}>
+              <button className={styles.secondaryButton} onClick={handleRevealTrump}>
+                Reveal Trump
+              </button>
+            </div>
+          ) : null}
 
           <PlayerHand
             cards={handCards}

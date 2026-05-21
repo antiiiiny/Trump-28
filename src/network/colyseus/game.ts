@@ -113,3 +113,24 @@ export function sendSelectTrump(room: GameRoomConnection, suit: string) {
     trumpSuit: suit,
   });
 }
+
+export function sendRequestRematch(room: GameRoomConnection) {
+  const sessionInfo = getStoredGameSession();
+  room.send('requestRematch', {
+    playerId: sessionInfo?.playerId ?? '',
+  });
+}
+
+export function sendEndGame(room: GameRoomConnection) {
+  const sessionInfo = getStoredGameSession();
+  room.send('endGame', {
+    playerId: sessionInfo?.playerId ?? '',
+  });
+}
+
+export function sendRevealTrump(room: GameRoomConnection) {
+  const sessionInfo = getStoredGameSession();
+  room.send('revealTrump', {
+    playerId: sessionInfo?.playerId ?? '',
+  });
+}
