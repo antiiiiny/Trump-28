@@ -16,9 +16,7 @@ export function ScorePanel({ teamScores, teamCoolies = { A: 0, B: 0 } }: ScorePa
             <span className={styles.playerName}>Team {team}</span>
             <div className={styles.scoreData}>
               <span className={styles.scoreValue}>{score}</span>
-              <span className={styles.coolieValue} title="Coolies" style={{ fontSize: '0.8em', opacity: 0.8, marginLeft: '8px' }}>
-                ⭐ {coolies}{coolies >= 5 ? ' Joker' : ''}
-              </span>
+              <span className={styles.coolieValue} title="Coolies">⭐ {coolies}{coolies >= 5 ? ' Joker' : ''}</span>
             </div>
           </div>
         ))}

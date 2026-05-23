@@ -2,6 +2,7 @@ import type { Room } from '@colyseus/sdk';
 import type { LobbyRoomState } from '../../../shared/colyseus/lobby';
 import { joinRoomSchema, leaveRoomSchema, playerNameSchema, readyUpSchema, roomCodeSchema, startGameSchema } from '../../../shared/protocol/lobby';
 import { colyseusClient } from './client';
+import { writeStoredColyseusSession } from './session';
 
 export type LobbyRoomConnection = Room<{ state: LobbyRoomState }>;
 
@@ -19,19 +20,11 @@ export async function createLobbyRoom(playerName: string): Promise<LobbyRoomConn
   const payload = { playerName: playerName.trim().slice(0, 16) };
   console.log('createLobbyRoom: sending joinRoom payload=', payload);
   room.send('joinRoom', joinRoomSchema.parse(payload));
-  // store session id for reconnect attempts
-  try {
-    sessionStorage.setItem(
-      'colyseus_session',
-      JSON.stringify({
-        roomId: room.roomId,
-        sessionId: room.sessionId,
-        reconnectionToken: room.reconnectionToken ?? '',
-      }),
-    );
-  } catch (err) {
-    // ignore
-  }
+  writeStoredColyseusSession({
+    roomId: room.roomId,
+    sessionId: room.sessionId,
+    reconnectionToken: room.reconnectionToken ?? '',
+  });
   return room;
 }
 
@@ -40,18 +33,11 @@ export async function joinLobbyRoom(roomCode: string, playerName: string): Promi
   console.log('joinLobbyRoom: joining roomCode=', roomCode, 'with payload=', payload);
   const room = await colyseusClient.joinById<LobbyRoomState>(roomCode);
   room.send('joinRoom', joinRoomSchema.parse(payload));
-  try {
-    sessionStorage.setItem(
-      'colyseus_session',
-      JSON.stringify({
-        roomId: room.roomId,
-        sessionId: room.sessionId,
-        reconnectionToken: room.reconnectionToken ?? '',
-      }),
-    );
-  } catch (err) {
-    // ignore
-  }
+  writeStoredColyseusSession({
+    roomId: room.roomId,
+    sessionId: room.sessionId,
+    reconnectionToken: room.reconnectionToken ?? '',
+  });
   return room;
 }
 

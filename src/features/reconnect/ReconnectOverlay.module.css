@@ -65,3 +65,17 @@
 .button:hover {
   background-color: var(--color-button-primary-hover);
 }
+
+.actions {
+  display: flex;
+  gap: var(--space-md);
+}
+
+.secondaryButton {
+  background-color: var(--color-button-secondary);
+  color: var(--color-text-primary);
+}
+
+.secondaryButton:hover {
+  background-color: var(--color-button-secondary-hover);
+}

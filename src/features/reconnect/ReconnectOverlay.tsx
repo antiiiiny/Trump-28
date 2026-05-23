@@ -6,6 +6,8 @@ interface ReconnectOverlayProps {
   message: string;
   actionLabel: string;
   onAction: () => void;
+  secondaryActionLabel?: string;
+  onSecondaryAction?: () => void;
 }
 
 export function ReconnectOverlay({
@@ -14,6 +16,8 @@ export function ReconnectOverlay({
   message,
   actionLabel,
   onAction,
+  secondaryActionLabel,
+  onSecondaryAction,
 }: ReconnectOverlayProps) {
   if (!isVisible) return null;
 
@@ -22,9 +26,16 @@ export function ReconnectOverlay({
       <div className={styles.modal}>
         <h2 className={styles.title}>{title}</h2>
         <p className={styles.message}>{message}</p>
-        <button className={styles.button} onClick={onAction} type="button">
-          {actionLabel}
-        </button>
+        <div className={styles.actions}>
+          {onSecondaryAction && secondaryActionLabel ? (
+            <button className={`${styles.button} ${styles.secondaryButton}`} onClick={onSecondaryAction} type="button">
+              {secondaryActionLabel}
+            </button>
+          ) : null}
+          <button className={styles.button} onClick={onAction} type="button">
+            {actionLabel}
+          </button>
+        </div>
       </div>
     </div>
   );

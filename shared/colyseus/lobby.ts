@@ -62,6 +62,10 @@ export class LobbyRoomState extends Schema {
   @type('string') trumpSuit = '';
   @type('boolean') trumpRevealed = false;
   @type('string') trumpHolderId = '';
+  @type('string') trumpCardCode = '';
+  @type(['string']) trumpAcknowledgedBy = new ArraySchema<string>();
+  @type('boolean') trumpAwaitingAcknowledgement = false;
+  @type('boolean') trumpAwaitingReveal = false;
   @type(GameBidState) currentBid = new GameBidState();
   @type([GameBidState]) bids = new ArraySchema<GameBidState>();
   @type(GameTrickState) currentTrick = new GameTrickState();

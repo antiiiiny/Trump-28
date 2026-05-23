@@ -14,14 +14,12 @@ export function TurnIndicator({ activePlayer, isYourTurn, phaseLabel, trumpLabel
         {phaseLabel ? <span className={styles.phase}>{phaseLabel}</span> : null}
         {trumpLabel ? <span className={styles.trump}>{trumpLabel}</span> : null}
       </div>
-      {isYourTurn ? (
-        <>
-          <div className={styles.pulse} />
-          <span>Your turn</span>
-        </>
-      ) : (
-        <span>{activePlayer ? `${activePlayer}'s turn` : 'Waiting for turn'}</span>
-      )}
+      <div className={styles.turnRow}>
+        <div className={styles.pulse} />
+        <span className={`${styles.playerName} ${isYourTurn ? styles.playerNameActive : ''}`}>
+          {activePlayer || 'Waiting for turn'}
+        </span>
+      </div>
     </div>
   );
 }

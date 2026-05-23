@@ -73,7 +73,7 @@ describe('privateDelivery', () => {
     sendPrivateHand(client as never, 'seat0', [
       { rank: 'A', suit: 'H', code: 'AH', points: 1 },
     ]);
-    sendPrivateTrump(client as never, 'S', 'seat0');
+    sendPrivateTrump(client as never, 'S', 'seat0', 'AS');
 
     expect(client.send).toHaveBeenCalledWith('privateHand', {
       playerId: 'seat0',
@@ -82,6 +82,7 @@ describe('privateDelivery', () => {
     expect(client.send).toHaveBeenCalledWith('privateTrump', {
       trumpSuit: 'S',
       trumpHolderId: 'seat0',
+      cardCode: 'AS',
     });
   });
 });

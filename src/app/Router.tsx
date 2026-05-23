@@ -11,15 +11,18 @@ export function Router() {
     screen,
     room,
     myHand,
+    myTrumpCardCode,
     busy,
     overlay,
     goToScreen,
     createRoom,
     joinRoom,
+    retryReconnect,
     readyUp,
     startGame,
     leaveRoom,
     clearOverlay,
+    discardReconnectState,
   } = useLobbyFlow();
 
   const renderScreen = () => {
@@ -53,7 +56,7 @@ export function Router() {
           />
         );
       case 'game':
-        return <GameTable room={room} myHand={myHand} onNavigate={(nextScreen) => goToScreen(nextScreen)} />;
+        return <GameTable room={room} myHand={myHand} myTrumpCardCode={myTrumpCardCode} onNavigate={(nextScreen) => goToScreen(nextScreen)} />;
       case 'results':
         return <Results room={room} onNavigate={(nextScreen) => goToScreen(nextScreen)} onLeaveRoom={leaveRoom} />;
       default:
@@ -70,7 +73,9 @@ export function Router() {
           title={overlay.title}
           message={overlay.message}
           actionLabel={overlay.actionLabel}
-          onAction={clearOverlay}
+          secondaryActionLabel={overlay.title === 'Disconnected' || overlay.title === 'Reconnect Failed' ? 'Cancel' : undefined}
+          onAction={overlay.title === 'Disconnected' || overlay.title === 'Reconnect Failed' ? () => void retryReconnect() : clearOverlay}
+          onSecondaryAction={overlay.title === 'Disconnected' || overlay.title === 'Reconnect Failed' ? discardReconnectState : undefined}
         />
       ) : null}
     </>

@@ -5,6 +5,7 @@ interface PlayerHandProps {
   cards: string[];
   playerName: string;
   teamLabel: string;
+  isCurrentTurn?: boolean;
   selectedCardCode?: string;
   onSelectCard?: (code: string) => void;
 }
@@ -13,6 +14,7 @@ export function PlayerHand({
   cards,
   playerName,
   teamLabel,
+  isCurrentTurn = false,
   selectedCardCode,
   onSelectCard,
 }: PlayerHandProps) {
@@ -20,7 +22,8 @@ export function PlayerHand({
 
   return (
     <div className={styles.container}>
-      <div className={styles.nameplateRow}>
+      <div className={`${styles.nameplateRow} ${isCurrentTurn ? styles.nameplateRowActive : ''}`}>
+        {isCurrentTurn ? <div className={styles.turnPulse} /> : null}
         <div className={styles.nameplate}>{playerName}</div>
         <div className={styles.teamBadge}>{teamLabel}</div>
       </div>

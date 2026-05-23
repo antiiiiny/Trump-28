@@ -3,7 +3,8 @@ import type { Room } from '@colyseus/sdk';
 import type { LobbyRoomState } from '../../shared/colyseus/lobby';
 import { createLobbyRoom, joinLobbyRoom, sendLeaveRoom, sendReadyUp, sendStartGame } from '../network/colyseus/lobby';
 import { reconnectToRoom } from '../network/colyseus/reconnect';
-import { joinGameRoom } from '../network/colyseus/game';
+import { joinGameRoom, clearGameSession } from '../network/colyseus/game';
+import { readStoredColyseusSession, clearStoredColyseusSession, writeStoredColyseusSession } from '../network/colyseus/session';
 
 export type AppScreen = 'home' | 'room' | 'lobby' | 'game' | 'results';
 
@@ -17,15 +18,18 @@ export interface RoomFlowState {
   screen: AppScreen;
   room: Room<{ state: LobbyRoomState }> | null;
   myHand: string[];
+  myTrumpCardCode: string;
   busy: boolean;
   overlay: FlowOverlay | null;
   goToScreen: (screen: AppScreen) => void;
   createRoom: (playerName: string) => Promise<void>;
   joinRoom: (playerName: string, roomCode: string) => Promise<void>;
+  retryReconnect: () => Promise<void>;
   readyUp: () => void;
   startGame: () => void;
   leaveRoom: () => Promise<void>;
   clearOverlay: () => void;
+  discardReconnectState: () => void;
 }
 
 function getJoinErrorMessage(error: unknown) {
@@ -58,16 +62,50 @@ function normalizeRoomCode(roomCode: string) {
   return roomCode.trim().toUpperCase().slice(0, 4);
 }
 
+function getScreenFromPhase(phase: LobbyRoomState['phase']): AppScreen {
+  if (phase === 'roundEnd' || phase === 'gameEnd') {
+    return 'results';
+  }
+
+  if (phase === 'playing' || phase === 'biddingRound1' || phase === 'biddingRound2' || phase === 'selectingTrump') {
+    return 'game';
+  }
+
+  return 'lobby';
+}
+
 export function useLobbyFlow(): RoomFlowState {
   const [screen, setScreen] = useState<AppScreen>('home');
   const [room, setRoom] = useState<Room<{ state: LobbyRoomState }> | null>(null);
   const [myHand, setMyHand] = useState<string[]>([]);
+  const [myTrumpCardCode, setMyTrumpCardCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [overlay, setOverlay] = useState<FlowOverlay | null>(null);
   const [, forceRender] = useState(0);
   const intentionalLeaveRef = useRef(false);
   const currentRoomRef = useRef<Room<{ state: LobbyRoomState }> | null>(null);
   const transitioningToGameRef = useRef(false);
+
+  const syncStoredSession = (nextRoom: Room<{ state: LobbyRoomState }>) => {
+    const players = nextRoom.state?.players;
+    if (!players || typeof players.find !== 'function') {
+      return;
+    }
+
+    const localPlayer = players.find((player) => player.playerId === nextRoom.sessionId);
+    if (!localPlayer) {
+      return;
+    }
+
+    writeStoredColyseusSession({
+      roomId: nextRoom.roomId,
+      sessionId: nextRoom.sessionId,
+      reconnectionToken: nextRoom.reconnectionToken ?? '',
+      playerId: localPlayer.playerId,
+      seat: localPlayer.seat,
+      name: localPlayer.name,
+    });
+  };
 
   const attachRoom = (nextRoom: Room<{ state: LobbyRoomState }>, skipResetFlag = false) => {
     currentRoomRef.current = nextRoom;
@@ -81,6 +119,7 @@ export function useLobbyFlow(): RoomFlowState {
 
     nextRoom.onStateChange((state) => {
       forceRender((value) => value + 1);
+      syncStoredSession(nextRoom);
 
       if (state.phase === 'roundEnd' && lastSeenPhase !== 'roundEnd') {
         setScreen('results');
@@ -158,6 +197,10 @@ export function useLobbyFlow(): RoomFlowState {
     nextRoom.onMessage('privateTrump', (message: unknown) => {
       // Handle private trump suit if this player is trump holder
       console.log('Received privateTrump:', message);
+      const trumpPayload = message as { cardCode?: string };
+      if (typeof trumpPayload.cardCode === 'string') {
+        setMyTrumpCardCode(trumpPayload.cardCode);
+      }
     });
 
     nextRoom.onMessage('gameEnded', (message: unknown) => {
@@ -189,13 +232,16 @@ export function useLobbyFlow(): RoomFlowState {
       setOverlay({
         title: 'Disconnected',
         message: reason ? String(reason) : getDisconnectMessage(),
-        actionLabel: 'Return to room',
+        actionLabel: 'Rejoin',
       });
       setScreen('room');
       setRoom(null);
       currentRoomRef.current = null;
       setMyHand([]);
+      setMyTrumpCardCode('');
     });
+
+    syncStoredSession(nextRoom);
 
     nextRoom.onError((code, message) => {
       console.error('Room onError triggered:', { roomId: nextRoom.roomId, code, message });
@@ -211,29 +257,62 @@ export function useLobbyFlow(): RoomFlowState {
   useEffect(() => {
     (async () => {
       try {
-        const raw = sessionStorage.getItem('colyseus_session');
-        if (!raw) return;
-        const parsed = JSON.parse(raw) as { roomId?: string; sessionId?: string; reconnectionToken?: string } | string;
-        let reconnectionToken: string | undefined;
+        const stored = readStoredColyseusSession();
+        if (!stored) return;
 
-        if (typeof parsed === 'string') {
-          reconnectionToken = parsed as string;
-        } else {
-          reconnectionToken = parsed.reconnectionToken;
+        const reconnectionToken = stored.reconnectionToken;
+
+        if (reconnectionToken) {
+          // Prefer token-based reconnect when available
+          const rejoined = await reconnectToRoom(reconnectionToken);
+          if (rejoined) {
+            attachRoom(rejoined);
+            setScreen(getScreenFromPhase(rejoined.state.phase));
+            return;
+          }
         }
 
-        if (!reconnectionToken) return;
-
-        const rejoined = await reconnectToRoom(reconnectionToken);
-        if (rejoined) {
-          attachRoom(rejoined);
-          setScreen('lobby');
-        } else {
-          // failed to reconnect: clear stored session
-          sessionStorage.removeItem('colyseus_session');
+        // Fallback: attempt seat-based rejoin (joinById) if we have playerId and seat
+        if (stored.roomId && stored.playerId && typeof stored.seat === 'number' && stored.name) {
+          try {
+            const rejoined = await joinGameRoom(stored.roomId, stored.seat, stored.playerId, stored.name);
+            attachRoom(rejoined);
+            setScreen(getScreenFromPhase(rejoined.state.phase));
+            return;
+          } catch (err) {
+            console.warn('Seat-based rejoin failed', err);
+            // If the room no longer exists or has been disposed, clear the stored session
+            // so the user can rejoin/create a new room instead of being stuck.
+            try {
+              clearStoredColyseusSession();
+            } catch (e) {
+              // ignore
+            }
+            setOverlay({
+              title: 'Room Not Found',
+              message: 'The room no longer exists or has been closed. Returning to the start screen.',
+              actionLabel: 'OK',
+            });
+            setScreen('home');
+            return;
+          }
         }
+
+        // If neither path succeeded, show retry UI (token may be expired)
+        setOverlay({
+          title: 'Reconnect Failed',
+          message: 'Your room could not be rejoined yet. Try again while the reconnect window is open.',
+          actionLabel: 'Retry',
+        });
+        setScreen('room');
       } catch (err) {
         console.warn('Silent reconnect attempt failed', err);
+        setOverlay({
+          title: 'Reconnect Failed',
+          message: 'Your room could not be rejoined yet. Try again while the reconnect window is open.',
+          actionLabel: 'Retry',
+        });
+        setScreen('room');
       }
     })();
   }, []);
@@ -297,6 +376,41 @@ export function useLobbyFlow(): RoomFlowState {
     }
   };
 
+  const retryReconnect = async () => {
+    try {
+      const stored = readStoredColyseusSession();
+      if (!stored?.reconnectionToken) {
+        setOverlay(null);
+        setScreen('room');
+        return;
+      }
+
+      setBusy(true);
+      const rejoined = await reconnectToRoom(stored.reconnectionToken);
+      if (!rejoined) {
+        setOverlay({
+          title: 'Reconnect Failed',
+          message: 'Your room could not be rejoined yet. Try again while the reconnect window is open.',
+          actionLabel: 'Retry',
+        });
+        return;
+      }
+
+      attachRoom(rejoined);
+      setOverlay(null);
+      setScreen(getScreenFromPhase(rejoined.state.phase));
+    } catch (err) {
+      console.warn('Reconnect retry failed', err);
+      setOverlay({
+        title: 'Reconnect Failed',
+        message: 'Your room could not be rejoined yet. Try again while the reconnect window is open.',
+        actionLabel: 'Retry',
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const readyUp = () => {
     if (!room) {
       return;
@@ -325,11 +439,8 @@ export function useLobbyFlow(): RoomFlowState {
     setRoom(null);
     currentRoomRef.current = null;
     setMyHand([]);
-    try {
-      sessionStorage.removeItem('colyseus_session');
-    } catch (err) {
-      // ignore
-    }
+    setMyTrumpCardCode('');
+    clearGameSession();
     setScreen('room');
   };
 
@@ -337,18 +448,31 @@ export function useLobbyFlow(): RoomFlowState {
     setOverlay(null);
   };
 
+  const discardReconnectState = () => {
+    clearGameSession();
+    setOverlay(null);
+    setRoom(null);
+    currentRoomRef.current = null;
+    setMyHand([]);
+    setMyTrumpCardCode('');
+    setScreen('room');
+  };
+
   return {
     screen,
     room,
     myHand,
+    myTrumpCardCode,
     busy,
     overlay,
     goToScreen,
     createRoom: createRoomAction,
     joinRoom: joinRoomAction,
+    retryReconnect,
     readyUp,
     startGame,
     leaveRoom,
     clearOverlay,
+    discardReconnectState,
   };
 }

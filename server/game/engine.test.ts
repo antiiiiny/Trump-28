@@ -42,6 +42,7 @@ function createState(overrides: Partial<RulesState> = {}): RulesState {
     trumpSuit: 'S',
     trumpRevealed: false,
     trumpHolderId: 'p0',
+    mustPlayTrumpPlayerId: '',
     activePlayerId: 'p0',
     dealerSeat: 0,
     ...overrides,
@@ -196,6 +197,54 @@ describe('engine', () => {
 
     expect(validateCardPlay(createCard('K', 'S'), 'p0', openingLeadState)).toMatchObject({ valid: false });
     expect(validateCardPlay(createCard('A', 'H'), 'p0', openingLeadState)).toMatchObject({ valid: true });
+  });
+
+  it('only forces trump on the reveal turn', () => {
+    const revealTurnState = createState({
+      phase: 'playing',
+      activePlayerId: 'p1',
+      trumpSuit: 'S',
+      trumpRevealed: true,
+      mustPlayTrumpPlayerId: 'p1',
+      handsByPlayerId: {
+        p0: [createCard('A', 'H')],
+        p1: [createCard('K', 'S'), createCard('Q', 'D')],
+        p2: [createCard('9', 'H')],
+        p3: [createCard('7', 'C')],
+      },
+      currentTrick: {
+        cards: [
+          { playerId: 'p0', card: createCard('A', 'H') },
+        ],
+        winnerId: null,
+        leadSuit: 'H',
+      },
+    });
+
+    const laterTurnState = createState({
+      phase: 'playing',
+      activePlayerId: 'p1',
+      trumpSuit: 'S',
+      trumpRevealed: true,
+      mustPlayTrumpPlayerId: '',
+      handsByPlayerId: {
+        p0: [createCard('A', 'H')],
+        p1: [createCard('K', 'S'), createCard('Q', 'D')],
+        p2: [createCard('9', 'H')],
+        p3: [createCard('7', 'C')],
+      },
+      currentTrick: {
+        cards: [
+          { playerId: 'p0', card: createCard('A', 'H') },
+        ],
+        winnerId: null,
+        leadSuit: 'H',
+      },
+    });
+
+    expect(validateCardPlay(createCard('Q', 'D'), 'p1', revealTurnState)).toMatchObject({ valid: false });
+    expect(validateCardPlay(createCard('K', 'S'), 'p1', revealTurnState)).toMatchObject({ valid: true });
+    expect(validateCardPlay(createCard('Q', 'D'), 'p1', laterTurnState)).toMatchObject({ valid: true });
   });
 
   it('rejects card play before trump has been selected', () => {

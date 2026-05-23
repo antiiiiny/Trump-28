@@ -123,3 +123,50 @@ If testing on another device on the same Wi-Fi, the Vite dev server should be st
 - `server/rooms/GameRoom.ts` validates bids and card plays against the pure engine and advances bidding / trick state.
 - `src/features/game/GameTable.tsx` renders live bidding order, turn status, trick positions, and player hand state from room data.
 - The client send helpers now serialize the correct payloads for bid, pass, trump selection, and card play.
+
+## Stage 6 addendum
+
+This repo is now past the core gameplay wiring and into reconnect, results, and layout polish.
+
+### Current gameplay and UX behavior
+
+- Trump reveal is player-driven. The player who cannot follow suit can choose when to reveal trump, and the reveal is transient for that trick.
+- The game viewport is locked so the page does not scroll during play.
+- Reconnect works with token-based recovery first, then seat-based fallback using stored player identity and seat data.
+- The lobby room code is preserved across the lobby-to-game handoff and survives refresh/rejoin flows.
+- Private state is restored on reconnect through server delivery helpers for hand, trump, and round snapshot data.
+- The trick area is intentionally height-locked so the player hand stays visible.
+
+### Results screen work
+
+- The results screen no longer defaults to Team A / 0 when summary data is missing.
+- It now waits for a complete round summary or derives a safe fallback from live round state.
+- The server coolie scoring path was corrected so the round category is derived from the actual bid instead of assuming round 2.
+- The bidding order display now starts from the current active bidder instead of always assuming dealer + 1.
+
+### Layout debugging notes
+
+- The trick-card layout issue came from the height chain and centering behavior, not from seat mapping.
+- The local player card should appear in the bottom position, teammate at the top, and opponents on the left and right.
+- `src/components/table/TrickArea.module.css` now owns the vertical space and anchors the trick stage at the bottom to reduce the gap above the hand.
+- `src/features/game/GameTable.tsx` still maps the local player to `bottom`; the visual issue is handled in CSS.
+
+### Recent file-level context
+
+- `src/components/table/TrickArea.module.css` was updated to lock the trick area height and reduce layout shift.
+- `src/features/results/Results.tsx` was updated to avoid fake default summaries and to recover when the server summary is not yet complete.
+- `src/features/game/GameTable.tsx` was updated so bidding order follows the current opening bidder.
+- `server/rooms/GameRoom.ts` was updated so coolie scoring uses the correct bid category.
+
+### Validation status
+
+- `npm run build` passes after the recent changes.
+- `npm run server` and `npm run dev` were previously attempted but are not currently clean in this workspace context.
+- The remaining work is visual verification in the browser and any final offset tuning for trick card placement.
+
+### Current follow-up items
+
+- Keep the trick stage visually closer to the hand without reintroducing layout shifts.
+- Verify reconnect and private-state restore in a real disconnect/rejoin scenario.
+- Confirm the results screen renders the correct round winner and coolie totals in all states.
+

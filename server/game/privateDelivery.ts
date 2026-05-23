@@ -38,10 +38,11 @@ export function sendPrivateHand(client: Client, playerId: string, cards: Card[])
   sendPrivate(client, 'privateHand', payload);
 }
 
-export function sendPrivateTrump(client: Client, trumpSuit: Suit, trumpHolderId: string) {
+export function sendPrivateTrump(client: Client, trumpSuit: Suit, trumpHolderId: string, cardCode: string) {
   const payload: PrivateTrumpPayload = {
     trumpSuit,
     trumpHolderId,
+    cardCode,
   };
 
   sendPrivate(client, 'privateTrump', payload);

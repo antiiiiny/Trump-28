@@ -1,5 +1,5 @@
 .container {
-  min-height: 100vh;
+  min-height: 100svh;
   background:
     var(--felt-texture),
     linear-gradient(135deg, var(--color-felt) 0%, var(--color-felt-lighter) 100%);
@@ -7,13 +7,13 @@
   align-items: stretch;
   justify-content: center;
   padding: var(--space-lg);
-  overflow: auto;
+  overflow: hidden;
 }
 
 .board {
   position: relative;
   width: min(1120px, 100%);
-  min-height: 100vh;
+  min-height: 100svh;
   display: grid;
   gap: var(--space-lg);
 }
@@ -30,11 +30,10 @@
 }
 
 .topStatusRow {
-  display: grid;
-  grid-template-columns: minmax(0, 240px) minmax(160px, 1fr);
+  display: flex;
   gap: var(--space-lg);
-  align-items: end;
-  justify-content: start;
+  align-items: center;
+  justify-content: space-between;
   padding: 0 var(--space-lg);
 }
 
@@ -59,7 +58,7 @@
   align-items: center;
   justify-content: center;
   flex: 1;
-  min-height: 300px;
+  min-height: 240px;
 }
 
 .biddingStack {
@@ -138,7 +137,8 @@
 
 .selectTrumpControls {
   display: flex;
-  gap: var(--space-sm);
+  flex-direction: column;
+  gap: var(--space-md);
   align-items: center;
 }
 
@@ -151,6 +151,14 @@
   color: var(--color-text-muted);
 }
 
+.selectTrumpPreview {
+  width: 96px;
+  height: 144px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .trumpStatusBanner {
   align-self: center;
   background: rgba(255, 255, 255, 0.16);
@@ -159,42 +167,41 @@
   padding: var(--space-xs) var(--space-lg);
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-semibold);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
 }
 
-.bidHistory {
+.trumpStatusCard {
+  width: 48px;
+  height: 72px;
+  flex-shrink: 0;
+}
+
+.handActions {
   display: flex;
-  flex-direction: column;
-  gap: var(--space-sm);
+  justify-content: center;
+}
+
+.trumpAckBanner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-md);
   background: rgba(255, 255, 255, 0.12);
   border-radius: var(--radius-md);
   padding: var(--space-md);
   color: white;
 }
 
-.bidHistoryLabel {
-  font-size: var(--font-size-sm);
+.trumpAckCard {
+  width: 72px;
+  height: 108px;
+  flex-shrink: 0;
+}
+
+.trumpAckText {
   font-weight: var(--font-weight-semibold);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  opacity: 0.8;
-}
-
-.bidHistoryRow {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-sm);
-}
-
-.bidHistoryChip {
-  background: rgba(255, 255, 255, 0.14);
-  border-radius: 999px;
-  padding: var(--space-xs) var(--space-sm);
-  font-size: var(--font-size-sm);
-}
-
-.handActions {
-  display: flex;
-  justify-content: center;
 }
 
 .trumpSuitButton {
@@ -243,7 +250,8 @@
   }
 
   .topStatusRow {
-    grid-template-columns: 1fr;
+    flex-direction: column;
+    align-items: stretch;
   }
 
   .middleRow {

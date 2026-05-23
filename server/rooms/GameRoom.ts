@@ -2,7 +2,7 @@ import { Room, type Client } from 'colyseus';
 import { ArraySchema } from '@colyseus/schema';
 import { GameBidState, GameTrickCardState, GameTrickState, LobbyRoomState, createLobbyPlayers, type LobbyPlayerState } from '../../shared/colyseus/lobby';
 import { joinRoomSchema, leaveRoomSchema, readyUpSchema, startGameSchema, type JoinRoomPayload, type LeaveRoomPayload, type ReadyUpPayload, type StartGamePayload } from '../../shared/protocol/lobby';
-import { endGamePayloadSchema, placeBidPayloadSchema, playCardPayloadSchema, requestRematchPayloadSchema, revealTrumpPayloadSchema, selectTrumpPayloadSchema, type EndGamePayload, type PlaceBidPayload, type PlayCardPayload, type RequestRematchPayload, type RevealTrumpPayload, type SelectTrumpPayload } from '../../shared/protocol/game';
+import { acknowledgeTrumpPayloadSchema, endGamePayloadSchema, placeBidPayloadSchema, playCardPayloadSchema, requestRematchPayloadSchema, revealTrumpPayloadSchema, selectTrumpPayloadSchema, type AcknowledgeTrumpPayload, type EndGamePayload, type PlaceBidPayload, type PlayCardPayload, type RequestRematchPayload, type RevealTrumpPayload, type SelectTrumpPayload } from '../../shared/protocol/game';
 import { createDeck } from '../game/deck';
 import { getNextEligibleBidderId, isBiddingComplete, resolveTrick, scoreCoolies, scoreRound, validateBid, validateCardPlay, validateTrumpReveal, type RulesState } from '../game/engine';
 import { sendPrivateHand, sendPrivateTrump, sendRoundSnapshot } from '../game/privateDelivery';
@@ -14,7 +14,7 @@ import type { Suit } from '../../shared/enums/suit';
 import type { TeamId } from '../../shared/models/team';
 import type { Trick } from '../../shared/models/trick';
 
-const RECONNECT_WINDOW_SECONDS = 60;
+const RECONNECT_WINDOW_SECONDS = 180;
 
 function cardFromCode(code: string): Card {
   const suit = code.slice(-1) as Suit;
@@ -33,7 +33,6 @@ function ensurePlayerSlots(state: LobbyRoomState) {
   if (state.players.length === 4) {
     return;
   }
-
   state.players = createLobbyPlayers();
 }
 
@@ -71,6 +70,7 @@ function createRulesState(room: GameRoom): RulesState {
     trumpSuit: (room.privateTrumpSuit ? room.privateTrumpSuit : room.state.trumpRevealed ? (room.state.trumpSuit as Suit | '') : '') || null,
     trumpRevealed: room.state.trumpRevealed,
     trumpHolderId: room.state.trumpHolderId,
+    mustPlayTrumpPlayerId: room.privateMustPlayTrumpPlayerId,
     activePlayerId: room.state.activePlayerId,
     dealerSeat: room.state.dealerSeat,
   };
@@ -119,12 +119,15 @@ export class GameRoom extends Room<{ state: LobbyRoomState }> {
   private readonly dealtSecondHands = new Set<number>();
   privateTrumpSuit: Suit | '' = '';
   privateTrumpHolderSeat: number | null = null;
+  privateTrumpCardCode = '';
+  privateMustPlayTrumpPlayerId = '';
+  privateTrickResolutionTimeout: ReturnType<typeof setTimeout> | null = null;
 
   onCreate(options: { lobbyRoomId?: string; hostId?: string } = {}) {
     try {
       console.log('GameRoom.onCreate: Initializing game room with options=', options);
       this.setState(new LobbyRoomState());
-      this.state.roomCode = this.roomId;
+      this.state.roomCode = options.lobbyRoomId ?? this.roomId;
       this.state.gameRoomId = this.roomId;
       this.state.phase = 'biddingRound1';
       this.state.gameStarted = true;
@@ -134,6 +137,9 @@ export class GameRoom extends Room<{ state: LobbyRoomState }> {
       this.state.trumpRevealed = false;
       this.state.trumpSuit = '';
       this.state.trumpHolderId = '';
+      this.state.trumpCardCode = '';
+      this.state.trumpAwaitingAcknowledgement = false;
+      this.state.trumpAcknowledgedBy = new ArraySchema<string>();
       this.state.hostId = options.hostId ?? '';
       this.state.players = createLobbyPlayers();
       ensurePlayerSlots(this.state);
@@ -174,12 +180,74 @@ export class GameRoom extends Room<{ state: LobbyRoomState }> {
         this.handleSelectTrump(client, message);
       });
 
+      // Reveal request: marks the current trick as the one where reveal is allowed and notifies clients
+      this.onMessage('revealTrump', (client: Client, message: RevealTrumpPayload) => {
+        try {
+          const parsed = revealTrumpPayloadSchema.safeParse(message);
+          if (!parsed.success) {
+            this.sendClientError(client, 'invalid_payload', 'Invalid revealTrump payload');
+            return;
+          }
+
+          const seat = this.seatByClient.get(client.sessionId);
+          if (seat === undefined) {
+            this.sendClientError(client, 'no_seat', 'No seat assigned for this session');
+            return;
+          }
+
+          const player = this.state.players[seat];
+          if (player.playerId !== parsed.data.playerId) {
+            this.sendClientError(client, 'invalid_player', 'Player mismatch');
+            return;
+          }
+
+          // Validate reveal allowed by engine
+          const rulesState = createRulesState(this);
+          const validation = validateTrumpReveal(rulesState, player.playerId);
+          if (!validation.valid) {
+            this.sendClientError(client, 'invalid_reveal', validation.reason ?? 'Cannot reveal trump');
+            return;
+          }
+
+          // Immediately reveal trump to all clients (no holder acceptance required)
+          this.state.trumpAwaitingReveal = false;
+          this.state.trumpRevealed = true;
+          this.state.trumpSuit = this.privateTrumpSuit;
+          this.state.trumpCardCode = this.privateTrumpCardCode;
+          this.privateTrumpHolderSeat = seat;
+          this.state.trumpHolderId = player.playerId;
+          // Force this player to play trump for this trick (transient)
+          this.privateMustPlayTrumpPlayerId = player.playerId;
+
+          // Send private trump to holder and broadcast updated round snapshot to everyone
+          for (const c of this.clients) {
+            const s = this.seatByClient.get(c.sessionId);
+            if (s === undefined) continue;
+            const p = this.state.players[s];
+            try {
+              if (s === this.privateTrumpHolderSeat && this.privateTrumpSuit && this.privateTrumpCardCode) {
+                sendPrivateTrump(c, this.privateTrumpSuit, p.playerId, this.privateTrumpCardCode);
+              }
+              sendRoundSnapshot(c, createRoundSnapshot(this), p.playerId);
+            } catch (err) {
+              console.warn('Failed to send round snapshot after reveal to', c.sessionId, err);
+            }
+          }
+        } catch (err) {
+          this.sendClientError(client, 'server_error', 'Failed to process reveal');
+        }
+      });
+
       this.onMessage('playCard', (client: Client, message: PlayCardPayload) => {
         this.handlePlayCard(client, message);
       });
 
       this.onMessage('revealTrump', (client: Client, message: RevealTrumpPayload) => {
         this.handleRevealTrump(client, message);
+      });
+
+      this.onMessage('acknowledgeTrump', (client: Client, message: AcknowledgeTrumpPayload) => {
+        this.handleAcknowledgeTrump(client, message);
       });
 
       this.onMessage('endGame', (client: Client, message: EndGamePayload) => {
@@ -262,10 +330,8 @@ export class GameRoom extends Room<{ state: LobbyRoomState }> {
         this.sendClientError(client, 'seat_occupied', 'This seat is already occupied.');
         return;
       }
-      if (seatPlayer.occupied && seatPlayer.playerId === playerId && this.seatByClient.get(client.sessionId) === undefined) {
-        console.log('GameRoom.onJoin: Player', playerId, 'already has a session, rejecting duplicate');
-        this.sendClientError(client, 'already_seated', 'You are already seated in this game.');
-        return;
+      if (seatPlayer.occupied && seatPlayer.playerId === playerId && !seatPlayer.connected) {
+        console.log('GameRoom.onJoin: Reconnecting player to occupied seat', seat);
       }
 
       console.log('GameRoom.onJoin: Hydrating client at seat', seat);
@@ -299,9 +365,9 @@ export class GameRoom extends Room<{ state: LobbyRoomState }> {
       }
 
       try {
-        if (this.privateTrumpHolderSeat === seat && this.privateTrumpSuit) {
+        if (this.privateTrumpHolderSeat === seat && this.privateTrumpSuit && this.privateTrumpCardCode) {
           console.log('GameRoom.onJoin: Sending private trump to holder at seat', seat);
-          sendPrivateTrump(client, this.privateTrumpSuit, this.state.players[seat].playerId);
+          sendPrivateTrump(client, this.privateTrumpSuit, this.state.players[seat].playerId, this.privateTrumpCardCode);
           console.log('GameRoom.onJoin: Private trump sent');
         }
       } catch (err) {
@@ -380,6 +446,73 @@ export class GameRoom extends Room<{ state: LobbyRoomState }> {
     }, RECONNECT_WINDOW_SECONDS * 1000);
 
     this.reconnectTimers.set(client.sessionId, timeout);
+  }
+
+  // Exposed for tests: finalize the current trick immediately using the given active trump suit.
+  finalizeCurrentTrickNow(activeTrumpSuit: Suit) {
+    try {
+      const trickSnapshot: Trick = {
+        cards: this.state.currentTrick.cards.map((currentCard) => ({
+          playerId: currentCard.playerId,
+          card: cardFromCode(currentCard.code),
+        })),
+        winnerId: null,
+        leadSuit: this.state.currentTrick.leadSuit ? (this.state.currentTrick.leadSuit as Suit) : null,
+      };
+      const winnerId = resolveTrick(trickSnapshot, activeTrumpSuit as Suit);
+      this.state.currentTrick.winnerId = winnerId;
+      this.state.tricks.push(this.state.currentTrick);
+      this.state.currentTrick = new GameTrickState();
+      // Clear any transient reveal marker now that the trick has resolved
+      if (this.state.trumpAwaitingReveal) {
+        this.state.trumpAwaitingReveal = false;
+      }
+      this.state.activePlayerId = winnerId;
+      if (this.privateTrickResolutionTimeout) {
+        clearTimeout(this.privateTrickResolutionTimeout);
+        this.privateTrickResolutionTimeout = null;
+      }
+
+      const allTricksComplete = this.state.tricks.length >= 8;
+      if (allTricksComplete && this.state.currentBid) {
+        const roundResult = scoreRound(
+          this.state.tricks.map((currentTrick) => ({
+            cards: currentTrick.cards.map((currentCard) => ({
+              playerId: currentCard.playerId,
+              card: cardFromCode(currentCard.code),
+            })),
+            winnerId: currentTrick.winnerId || null,
+            leadSuit: currentTrick.leadSuit ? (currentTrick.leadSuit as Suit) : null,
+          })),
+          {
+            playerId: this.state.currentBid.playerId,
+            value: this.state.currentBid.value,
+            passed: this.state.currentBid.passed,
+            isHonours: this.state.currentBid.isHonours,
+          },
+          Object.fromEntries(this.state.players.map((currentPlayer) => [currentPlayer.playerId, currentPlayer.team as TeamId])) as Record<string, TeamId>,
+        );
+        this.state.phase = 'roundEnd';
+        this.state.pauseReason = roundResult.biddingTeamWon ? 'Bidding team won the round.' : 'Bidding team lost the round.';
+        this.state.lastRoundSummary.roundNumber = this.state.roundNumber;
+        this.state.lastRoundSummary.biddingTeamId = roundResult.biddingTeamId;
+        this.state.lastRoundSummary.winningTeamId = roundResult.winningTeamId;
+        this.state.lastRoundSummary.bidValue = this.state.currentBid.value;
+        this.state.lastRoundSummary.bidPlayerId = this.state.currentBid.playerId;
+        this.state.lastRoundSummary.biddingTeamPoints = roundResult.biddingTeamPoints;
+        this.state.lastRoundSummary.opposingTeamPoints = roundResult.opposingTeamPoints;
+        this.state.lastRoundSummary.biddingTeamWon = roundResult.biddingTeamWon;
+        this.state.teamAScore += roundResult.winningTeamId === 'A' ? 1 : 0;
+        this.state.teamBScore += roundResult.winningTeamId === 'B' ? 1 : 0;
+
+        const cooliePhase = this.state.currentBid.isHonours || this.state.currentBid.value < 24 ? 'biddingRound1' : 'biddingRound2';
+        const coolieDeltas = scoreCoolies(roundResult, this.state.currentBid as unknown as Bid, cooliePhase);
+        this.state.teamACoolies += coolieDeltas.A;
+        this.state.teamBCoolies += coolieDeltas.B;
+      }
+    } catch (err) {
+      console.error('finalizeCurrentTrickNow: error', err);
+    }
   }
 
   private handleJoinRoom(client: Client, message: JoinRoomPayload) {
@@ -498,17 +631,28 @@ export class GameRoom extends Room<{ state: LobbyRoomState }> {
       return;
     }
 
-    this.privateTrumpHolderSeat = seat;
-    this.privateTrumpSuit = parsed.data.trumpSuit;
-    this.state.trumpHolderId = player.playerId;
-    sendPrivateTrump(client, parsed.data.trumpSuit, player.playerId);
+    const hand = this.handsBySeat.get(seat) ?? [];
+    const selectedCard = hand.find((card) => card.code === parsed.data.cardCode);
+    if (!selectedCard) {
+      this.sendClientError(client, 'card_missing', 'Selected trump card is not in the holder hand');
+      return;
+    }
 
-    // Deal second hands and move to round 2 bidding
+    this.privateTrumpHolderSeat = seat;
+    this.privateTrumpSuit = selectedCard.suit;
+    this.privateTrumpCardCode = selectedCard.code;
+    this.state.trumpHolderId = player.playerId;
+    this.state.trumpSuit = '';
+    this.state.trumpRevealed = false;
+    this.state.trumpAwaitingAcknowledgement = false;
+    this.state.trumpAcknowledgedBy = new ArraySchema<string>();
+    this.state.trumpCardCode = '';
+    sendPrivateTrump(client, selectedCard.suit, player.playerId, selectedCard.code);
+
+    // After selecting trump card, continue to round 2 bidding with trump still hidden.
     this.dealSecondHands();
     this.state.phase = 'biddingRound2';
 
-    // Reset bids for round 2, but keep track of who passed in round 1
-    // Players who passed in round 1 cannot bid in round 2
     this.state.currentBid.playerId = '';
     this.state.currentBid.value = 0;
     this.state.currentBid.passed = false;
@@ -529,7 +673,6 @@ export class GameRoom extends Room<{ state: LobbyRoomState }> {
     }));
     this.state.activePlayerId = getNextEligibleBidderId(rulesPlayers, ruleBids, this.state.trumpHolderId);
 
-    // Broadcast updated round snapshot to all connected clients
     for (const c of this.clients) {
       const s = this.seatByClient.get(c.sessionId);
       if (s === undefined) continue;
@@ -539,6 +682,80 @@ export class GameRoom extends Room<{ state: LobbyRoomState }> {
         sendRoundSnapshot(c, createRoundSnapshot(this), p.playerId);
       } catch (err) {
         console.warn('Failed to send updates after trump selection to', c.sessionId, err);
+      }
+    }
+  }
+
+  private handleAcknowledgeTrump(client: Client, message: AcknowledgeTrumpPayload) {
+    const parsed = acknowledgeTrumpPayloadSchema.safeParse(message);
+    if (!parsed.success) {
+      this.sendClientError(client, 'invalid_payload', 'Invalid acknowledgeTrump payload');
+      return;
+    }
+
+    const seat = this.seatByClient.get(client.sessionId);
+    if (seat === undefined) {
+      this.sendClientError(client, 'no_seat', 'No seat assigned for this session');
+      return;
+    }
+
+    const player = this.state.players[seat];
+    if (player.playerId !== parsed.data.playerId) {
+      this.sendClientError(client, 'invalid_player', 'Acknowledgement player mismatch');
+      return;
+    }
+
+    if (!this.state.trumpAwaitingAcknowledgement) {
+      this.sendClientError(client, 'invalid_phase', 'No trump acknowledgement is pending');
+      return;
+    }
+
+    if (player.playerId !== this.state.trumpHolderId && !this.state.trumpAcknowledgedBy.includes(player.playerId)) {
+      this.state.trumpAcknowledgedBy.push(player.playerId);
+    }
+
+    const allOthersAcknowledged = this.state.players
+      .filter((candidate) => candidate.occupied && candidate.connected && candidate.playerId !== this.state.trumpHolderId)
+      .every((candidate) => this.state.trumpAcknowledgedBy.includes(candidate.playerId));
+
+    if (allOthersAcknowledged) {
+      this.state.trumpAwaitingAcknowledgement = false;
+      this.state.trumpRevealed = true;
+      this.state.trumpSuit = this.privateTrumpSuit;
+
+      this.dealSecondHands();
+      this.state.phase = 'biddingRound2';
+
+      this.state.currentBid.playerId = '';
+      this.state.currentBid.value = 0;
+      this.state.currentBid.passed = false;
+      this.state.currentBid.isHonours = false;
+
+      const rulesPlayers = Array.from(this.state.players)
+        .filter((playerState) => playerState.occupied)
+        .map((playerState) => ({
+          playerId: playerState.playerId,
+          seat: playerState.seat,
+          team: playerState.team as TeamId,
+        }));
+      const ruleBids = Array.from(this.state.bids).map((bidState) => ({
+        playerId: bidState.playerId,
+        value: bidState.value,
+        passed: bidState.passed,
+        isHonours: bidState.isHonours,
+      }));
+      this.state.activePlayerId = getNextEligibleBidderId(rulesPlayers, ruleBids, this.state.trumpHolderId);
+    }
+
+    for (const c of this.clients) {
+      const s = this.seatByClient.get(c.sessionId);
+      if (s === undefined) continue;
+      const p = this.state.players[s];
+      try {
+        sendPrivateHand(c, p.playerId, this.handsBySeat.get(s) ?? []);
+        sendRoundSnapshot(c, createRoundSnapshot(this), p.playerId);
+      } catch (err) {
+        console.warn('Failed to send trump acknowledgement snapshot to', c.sessionId, err);
       }
     }
   }
@@ -576,6 +793,9 @@ export class GameRoom extends Room<{ state: LobbyRoomState }> {
     this.handsBySeat.set(seat, hand);
     player.cardsRemaining = hand.length;
     sendPrivateHand(client, player.playerId, hand);
+    if (this.privateMustPlayTrumpPlayerId === player.playerId) {
+      this.privateMustPlayTrumpPlayerId = '';
+    }
 
     if (this.state.currentTrick.cards.length === 0) {
       this.state.currentTrick.leadSuit = parsed.data.card.suit;
@@ -592,56 +812,15 @@ export class GameRoom extends Room<{ state: LobbyRoomState }> {
     const activeTrumpSuit = this.state.trumpRevealed && this.state.trumpSuit ? this.state.trumpSuit : this.privateTrumpSuit;
 
     if (this.state.currentTrick.cards.length === 4 && activeTrumpSuit) {
-      const trickSnapshot: Trick = {
-        cards: this.state.currentTrick.cards.map((currentCard) => ({
-          playerId: currentCard.playerId,
-          card: cardFromCode(currentCard.code),
-        })),
-        winnerId: null,
-        leadSuit: this.state.currentTrick.leadSuit ? (this.state.currentTrick.leadSuit as Suit) : null,
-      };
-      const winnerId = resolveTrick(trickSnapshot, activeTrumpSuit as Suit);
-      this.state.currentTrick.winnerId = winnerId;
-      this.state.tricks.push(this.state.currentTrick);
-      this.state.currentTrick = new GameTrickState();
-      this.state.activePlayerId = winnerId;
-
-      const allTricksComplete = this.state.tricks.length >= 8;
-      if (allTricksComplete && this.state.currentBid) {
-        const roundResult = scoreRound(
-          this.state.tricks.map((currentTrick) => ({
-            cards: currentTrick.cards.map((currentCard) => ({
-              playerId: currentCard.playerId,
-              card: cardFromCode(currentCard.code),
-            })),
-            winnerId: currentTrick.winnerId || null,
-            leadSuit: currentTrick.leadSuit ? (currentTrick.leadSuit as Suit) : null,
-          })),
-          {
-            playerId: this.state.currentBid.playerId,
-            value: this.state.currentBid.value,
-            passed: this.state.currentBid.passed,
-            isHonours: this.state.currentBid.isHonours,
-          },
-          Object.fromEntries(this.state.players.map((currentPlayer) => [currentPlayer.playerId, currentPlayer.team as TeamId])) as Record<string, TeamId>,
-        );
-        this.state.phase = 'roundEnd';
-        this.state.pauseReason = roundResult.biddingTeamWon ? 'Bidding team won the round.' : 'Bidding team lost the round.';
-        this.state.lastRoundSummary.roundNumber = this.state.roundNumber;
-        this.state.lastRoundSummary.biddingTeamId = roundResult.biddingTeamId;
-        this.state.lastRoundSummary.winningTeamId = roundResult.winningTeamId;
-        this.state.lastRoundSummary.bidValue = this.state.currentBid.value;
-        this.state.lastRoundSummary.bidPlayerId = this.state.currentBid.playerId;
-        this.state.lastRoundSummary.biddingTeamPoints = roundResult.biddingTeamPoints;
-        this.state.lastRoundSummary.opposingTeamPoints = roundResult.opposingTeamPoints;
-        this.state.lastRoundSummary.biddingTeamWon = roundResult.biddingTeamWon;
-        this.state.teamAScore += roundResult.winningTeamId === 'A' ? 1 : 0;
-        this.state.teamBScore += roundResult.winningTeamId === 'B' ? 1 : 0;
-        
-        const coolieDeltas = scoreCoolies(roundResult, this.state.currentBid as unknown as Bid, 'biddingRound2');
-        this.state.teamACoolies += coolieDeltas.A;
-        this.state.teamBCoolies += coolieDeltas.B;
+      if (this.privateTrickResolutionTimeout) {
+        clearTimeout(this.privateTrickResolutionTimeout);
       }
+
+      this.state.activePlayerId = '';
+
+      this.privateTrickResolutionTimeout = setTimeout(() => {
+        this.finalizeCurrentTrickNow(activeTrumpSuit as Suit);
+      }, 4000);
     }
   }
 
@@ -671,8 +850,16 @@ export class GameRoom extends Room<{ state: LobbyRoomState }> {
       return;
     }
 
+    this.state.trumpCardCode = this.privateTrumpCardCode;
     this.state.trumpRevealed = true;
     this.state.trumpSuit = this.privateTrumpSuit;
+    this.privateMustPlayTrumpPlayerId = '';
+
+    const hand = this.handsBySeat.get(seat) ?? [];
+    const playerHasTrump = hand.some((card) => card.suit === this.privateTrumpSuit);
+    if (playerHasTrump) {
+      this.privateMustPlayTrumpPlayerId = player.playerId;
+    }
 
     for (const c of this.clients) {
       const s = this.seatByClient.get(c.sessionId);
@@ -744,8 +931,16 @@ export class GameRoom extends Room<{ state: LobbyRoomState }> {
     this.state.trumpSuit = '';
     this.state.trumpRevealed = false;
     this.state.trumpHolderId = '';
+    this.state.trumpCardCode = '';
+    this.state.trumpAcknowledgedBy = new ArraySchema<string>();
+    this.state.trumpAwaitingAcknowledgement = false;
     this.privateTrumpSuit = '';
     this.privateTrumpHolderSeat = null;
+    this.privateTrumpCardCode = '';
+    if (this.privateTrickResolutionTimeout) {
+      clearTimeout(this.privateTrickResolutionTimeout);
+      this.privateTrickResolutionTimeout = null;
+    }
     this.dealtSecondHands.clear();
 
     this.handsBySeat.clear();

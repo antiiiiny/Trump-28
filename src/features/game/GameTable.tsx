@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { Room } from '@colyseus/sdk';
 import type { LobbyRoomState } from '../../../shared/colyseus/lobby';
 import { OpponentArea } from '../../components/table/OpponentArea';
@@ -7,6 +7,7 @@ import { PlayerHand } from '../../components/table/PlayerHand';
 import { BidPanel } from '../../components/table/BidPanel';
 import { ScorePanel } from '../../components/table/ScorePanel';
 import { TurnIndicator } from '../../components/table/TurnIndicator';
+import { PlayingCardView } from '../../components/cards/PlayingCardView';
 import { getStoredGameSession, sendPlaceBid, sendPass, sendPlayCard, sendRevealTrump, sendSelectTrump } from '../../network/colyseus/game';
 import styles from './GameTable.module.css';
 
@@ -14,10 +15,12 @@ interface GameTableProps {
   onNavigate?: (screen: 'home' | 'results' | 'lobby') => void;
   room?: Room<{ state: LobbyRoomState }> | null;
   myHand?: string[];
+  myTrumpCardCode?: string;
 }
 
-export function GameTable({ onNavigate, room, myHand = [] }: GameTableProps) {
+export function GameTable({ room, myHand = [], myTrumpCardCode = '' }: GameTableProps) {
   const [selectedCard, setSelectedCard] = useState<string>();
+  const [selectedTrumpCardCode, setSelectedTrumpCardCode] = useState<string>();
   const [selectedBid, setSelectedBid] = useState<number | null>(null);
 
   const roomState = room?.state;
@@ -35,6 +38,7 @@ export function GameTable({ onNavigate, room, myHand = [] }: GameTableProps) {
   const isPlayingPhase = phase === 'playing';
   const isSelectingTrump = phase === 'selectingTrump';
   const isYourTurn = roomState?.activePlayerId === localPlayerId;
+  const isTrumpHolder = roomState?.trumpHolderId === localPlayerId;
 
   // Team scores and coolies
   const teamScores = { A: roomState?.teamAScore || 0, B: roomState?.teamBScore || 0 };
@@ -48,11 +52,25 @@ export function GameTable({ onNavigate, room, myHand = [] }: GameTableProps) {
   const biddingOrder = useMemo(() => {
     if (!roomState) return [];
 
-    const orderedSeats = [0, 1, 2, 3].map((offset) => (roomState.dealerSeat + 1 + offset) % 4);
-    return orderedSeats
-      .map((seat) => players.find((player) => player.seat === seat))
-      .filter((player): player is NonNullable<typeof player> => Boolean(player));
-  }, [players, roomState]);
+    const orderedPlayers = [...players].sort((left, right) => left.seat - right.seat);
+    if (orderedPlayers.length === 0) {
+      return [];
+    }
+
+    const openingPlayer = orderedPlayers.find((player) => player.playerId === roomState.activePlayerId)
+      ?? orderedPlayers.find((player) => player.seat === ((roomState.dealerSeat + 1) % 4));
+
+    if (!openingPlayer) {
+      return orderedPlayers;
+    }
+
+    const openingIndex = orderedPlayers.findIndex((player) => player.playerId === openingPlayer.playerId);
+    if (openingIndex <= 0) {
+      return orderedPlayers;
+    }
+
+    return [...orderedPlayers.slice(openingIndex), ...orderedPlayers.slice(0, openingIndex)];
+  }, [players, roomState?.activePlayerId, roomState?.dealerSeat]);
 
   // Determine if honours required (teammate has passed)
   const teammate = Array.from(roomState?.players || []).find((p) => p.seat === (3 - localSeat) && p.team === localTeam);
@@ -86,12 +104,18 @@ export function GameTable({ onNavigate, room, myHand = [] }: GameTableProps) {
   }).filter(Boolean) as Array<{ playerId: string; code: string; position: 'top' | 'left' | 'right' | 'bottom' }>;
 
   const handCards = myHand;
+  const trumpCardSelection = selectedTrumpCardCode ?? myTrumpCardCode;
   const currentLeadSuit = roomState?.currentTrick?.leadSuit || '';
   const hasLeadSuit = Boolean(currentLeadSuit) && handCards.some((code) => code.slice(-1) === currentLeadSuit);
-  const canRevealTrump = isPlayingPhase && isYourTurn && Boolean(currentLeadSuit) && !roomState?.trumpRevealed && !hasLeadSuit;
-  const trumpLabel = roomState?.trumpRevealed && roomState.trumpSuit
-    ? `Trump revealed: ${roomState.trumpSuit === 'H' ? 'Hearts' : roomState.trumpSuit === 'D' ? 'Diamonds' : roomState.trumpSuit === 'C' ? 'Clubs' : 'Spades'}`
-    : '';
+  const canRevealTrump = isPlayingPhase && isYourTurn && Boolean(currentLeadSuit) && !roomState?.trumpRevealed && !hasLeadSuit && !roomState?.trumpAwaitingReveal;
+  const trumpCardLabel = roomState?.trumpRevealed && roomState.trumpCardCode ? roomState.trumpCardCode : '';
+  const trumpLabel = roomState?.trumpRevealed && trumpCardLabel ? 'Trump revealed' : '';
+
+  useEffect(() => {
+    setSelectedCard(undefined);
+    setSelectedTrumpCardCode(undefined);
+    setSelectedBid(null);
+  }, [phase]);
 
   // Bidding handlers
   const handlePlaceBid = (bid: number) => {
@@ -108,6 +132,11 @@ export function GameTable({ onNavigate, room, myHand = [] }: GameTableProps) {
 
   // Card play handler
   const handleSelectCard = (code: string) => {
+    if (isSelectingTrump && isTrumpHolder) {
+      setSelectedTrumpCardCode((current) => (current === code ? undefined : code));
+      return;
+    }
+
     if (isPlayingPhase) {
       if (!isYourTurn) {
         return;
@@ -121,14 +150,14 @@ export function GameTable({ onNavigate, room, myHand = [] }: GameTableProps) {
     setSelectedCard(selectedCard === code ? undefined : code);
   };
 
+  const handleConfirmTrumpSelection = () => {
+    if (!room || !trumpCardSelection) return;
+    sendSelectTrump(room, trumpCardSelection);
+  };
+
   const handleRevealTrump = () => {
     if (!room) return;
     sendRevealTrump(room);
-  };
-
-  const handleSelectTrump = (suit: string) => {
-    if (!room) return;
-    sendSelectTrump(room, suit);
   };
 
   const isBiddingDisabled = !isYourTurn || !isBiddingPhase;
@@ -136,37 +165,6 @@ export function GameTable({ onNavigate, room, myHand = [] }: GameTableProps) {
   return (
     <div className={styles.container}>
       <div className={`${styles.board} ${isBiddingPhase ? styles.biddingLayout : styles.playingLayout}`}>
-        {/* Only show opponents and trick area during playing phase */}
-        {isPlayingPhase && (
-          <>
-            <OpponentArea
-              position="top"
-              opponentName={opponentTop?.name || 'Teammate'}
-              teamLabel={`Team ${opponentTop?.team || 'A'}`}
-              cardCount={opponentTop?.cardsRemaining || 8}
-              tone={opponentTop?.team === localTeam ? 'teammate' : undefined}
-            />
-
-            <div className={styles.middleRow}>
-              <OpponentArea
-                position="left"
-                opponentName={opponentLeft?.name || 'Opponent Left'}
-                teamLabel={`Team ${opponentLeft?.team || 'B'}`}
-                cardCount={opponentLeft?.cardsRemaining || 8}
-              />
-
-              <TrickArea trickCards={trickCards} />
-
-              <OpponentArea
-                position="right"
-                opponentName={opponentRight?.name || 'Opponent Right'}
-                teamLabel={`Team ${opponentRight?.team || 'B'}`}
-                cardCount={opponentRight?.cardsRemaining || 8}
-              />
-            </div>
-          </>
-        )}
-
         {/* Main play area: score, turn indicator, and bidding/trick display */}
         <div className={styles.centralArea}>
           <div className={styles.topStatusRow}>
@@ -179,34 +177,24 @@ export function GameTable({ onNavigate, room, myHand = [] }: GameTableProps) {
             />
           </div>
 
-          {trumpLabel ? <div className={styles.trumpStatusBanner}>{trumpLabel}</div> : null}
-
-          {roomState?.bids?.length ? (
-            <div className={styles.bidHistory}>
-              <span className={styles.bidHistoryLabel}>Bid history</span>
-              <div className={styles.bidHistoryRow}>
-                {roomState.bids.map((bid, index) => {
-                  const player = players.find((candidate) => candidate.playerId === bid.playerId);
-                  const label = bid.passed ? 'Pass' : `${bid.value}${bid.isHonours ? 'H' : ''}`;
-                  return (
-                    <span key={`${bid.playerId}-${index}`} className={styles.bidHistoryChip}>
-                      {player?.name || 'Player'}: {label}
-                    </span>
-                  );
-                })}
-              </div>
+          {trumpLabel ? (
+            <div className={styles.trumpStatusBanner}>
+              <span>{trumpLabel}</span>
+              <span className={styles.trumpStatusCard}><PlayingCardView code={trumpCardLabel} /></span>
             </div>
           ) : null}
 
           {isSelectingTrump ? (
             <div className={styles.selectTrumpCenter}>
-              {roomState?.trumpHolderId === localPlayerId ? (
+              {isTrumpHolder ? (
                 <div className={styles.selectTrumpControls}>
-                  <span className={styles.selectTrumpLabel}>Select trump:</span>
-                  <button className={styles.trumpSuitButton} onClick={() => handleSelectTrump('H')}>Hearts</button>
-                  <button className={styles.trumpSuitButton} onClick={() => handleSelectTrump('D')}>Diamonds</button>
-                  <button className={styles.trumpSuitButton} onClick={() => handleSelectTrump('C')}>Clubs</button>
-                  <button className={styles.trumpSuitButton} onClick={() => handleSelectTrump('S')}>Spades</button>
+                  <span className={styles.selectTrumpLabel}>Pick a trump card from your hand</span>
+                  <div className={styles.selectTrumpPreview}>
+                    {trumpCardSelection ? <PlayingCardView code={trumpCardSelection} /> : <span className={styles.selectTrumpWaiting}>Tap a card below</span>}
+                  </div>
+                  <button className={styles.trumpSuitButton} onClick={handleConfirmTrumpSelection} disabled={!trumpCardSelection}>
+                    Select Trump Card
+                  </button>
                 </div>
               ) : (
                 <div className={styles.selectTrumpWaiting}>Waiting for winning bidder to select trump…</div>
@@ -245,15 +233,47 @@ export function GameTable({ onNavigate, room, myHand = [] }: GameTableProps) {
           ) : null}
         </div>
 
+        {/* Only show opponents and trick area during playing phase */}
+          {isPlayingPhase && (
+          <>
+            <OpponentArea
+              position="top"
+              opponentName={opponentTop?.name || 'Teammate'}
+              teamLabel={`Team ${opponentTop?.team || 'A'}`}
+              cardCount={opponentTop?.cardsRemaining || 8}
+              tone={opponentTop?.team === localTeam ? 'teammate' : undefined}
+            />
+
+            <div className={styles.middleRow}>
+              <OpponentArea
+                position="left"
+                opponentName={opponentLeft?.name || 'Opponent Left'}
+                teamLabel={`Team ${opponentLeft?.team || 'B'}`}
+                cardCount={opponentLeft?.cardsRemaining || 8}
+              />
+
+              <TrickArea trickCards={trickCards} />
+
+              <OpponentArea
+                position="right"
+                opponentName={opponentRight?.name || 'Opponent Right'}
+                teamLabel={`Team ${opponentRight?.team || 'B'}`}
+                cardCount={opponentRight?.cardsRemaining || 8}
+              />
+            </div>
+          </>
+        )}
+
         {/* Player hand section */}
         <div className={styles.handSection}>
-          <div className={styles.footerActions}>
-            <button className={styles.secondaryButton} onClick={() => onNavigate?.('results')}>
-              Show Results
-            </button>
-          </div>
-
-          {canRevealTrump ? (
+          {roomState?.trumpAwaitingReveal ? (
+            <div className={styles.handActions}>
+              <div className={styles.trumpAckBanner}>
+                <span className={styles.trumpAckText}>Reveal pending — waiting for holder</span>
+                {roomState.trumpCardCode ? <span className={styles.trumpAckCard}><PlayingCardView code={roomState.trumpCardCode} /></span> : null}
+              </div>
+            </div>
+          ) : canRevealTrump ? (
             <div className={styles.handActions}>
               <button className={styles.secondaryButton} onClick={handleRevealTrump}>
                 Reveal Trump
@@ -265,7 +285,8 @@ export function GameTable({ onNavigate, room, myHand = [] }: GameTableProps) {
             cards={handCards}
             playerName="You"
             teamLabel={`Team ${localTeam}`}
-            selectedCardCode={selectedCard}
+            selectedCardCode={isSelectingTrump && isTrumpHolder ? trumpCardSelection : selectedCard}
+            isCurrentTurn={isYourTurn}
             onSelectCard={handleSelectCard}
           />
         </div>

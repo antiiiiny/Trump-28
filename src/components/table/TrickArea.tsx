@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react';
 import { PlayingCardView } from '../cards/PlayingCardView';
 import styles from './TrickArea.module.css';
 
@@ -12,17 +13,45 @@ interface TrickAreaProps {
 }
 
 export function TrickArea({ trickCards }: TrickAreaProps) {
+  const [visibleCards, setVisibleCards] = useState(trickCards);
+  const clearTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (clearTimerRef.current !== null) {
+      window.clearTimeout(clearTimerRef.current);
+      clearTimerRef.current = null;
+    }
+
+    if (trickCards.length > 0) {
+      setVisibleCards(trickCards);
+      return;
+    }
+
+    clearTimerRef.current = window.setTimeout(() => {
+      setVisibleCards([]);
+      clearTimerRef.current = null;
+    }, 600);
+
+    return () => {
+      if (clearTimerRef.current !== null) {
+        window.clearTimeout(clearTimerRef.current);
+        clearTimerRef.current = null;
+      }
+    };
+  }, [trickCards]);
+
   const orderedPositions: Array<TrickCardDisplay['position']> = ['top', 'left', 'right', 'bottom'];
+  const cardsToRender = visibleCards;
 
   return (
     <div className={styles.container}>
       <div className={styles.content}>
-        {trickCards.length === 0 ? (
+        {cardsToRender.length === 0 ? (
           <p className={styles.empty}>Waiting for cards...</p>
         ) : (
           <div className={styles.stage}>
             {orderedPositions.map((position) => {
-              const card = trickCards.find((entry) => entry.position === position);
+              const card = cardsToRender.find((entry) => entry.position === position);
 
               if (!card) return null;
 

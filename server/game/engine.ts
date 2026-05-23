@@ -26,6 +26,7 @@ export interface RulesState {
   trumpSuit: Suit | null;
   trumpRevealed: boolean;
   trumpHolderId: string;
+  mustPlayTrumpPlayerId: string;
   activePlayerId: string;
   dealerSeat: PlayerSeat;
 }
@@ -38,6 +39,7 @@ export interface BidValidationResult {
 export interface CardPlayValidationResult {
   valid: boolean;
   reason?: string;
+  revealsTrump?: boolean;
 }
 
 export interface TrumpRevealValidationResult {
@@ -246,6 +248,10 @@ export function validateCardPlay(card: Card, playerId: string, state: RulesState
     return { valid: false, reason: 'Card is not in the player\'s hand.' };
   }
 
+  if (state.currentTrick.cards.length === 4 && !state.currentTrick.winnerId) {
+    return { valid: false, reason: 'Trick is resolving.' };
+  }
+
   if (state.phase === 'playing' && !state.trumpSuit) {
     return { valid: false, reason: 'Trump suit has not been selected yet.' };
   }
@@ -266,11 +272,15 @@ export function validateCardPlay(card: Card, playerId: string, state: RulesState
   }
 
   if (leadSuit && state.currentTrick.cards.length > 0 && !playerHasLeadSuit && playerHasTrump && !state.trumpRevealed) {
+    if (card.suit === state.trumpSuit) {
+      return { valid: true, revealsTrump: true };
+    }
+
     return { valid: false, reason: 'Reveal trump before playing a trump card.' };
   }
 
-  if (leadSuit && state.currentTrick.cards.length > 0 && !playerHasLeadSuit && playerHasTrump && state.trumpRevealed && card.suit !== state.trumpSuit) {
-    return { valid: false, reason: 'Must play trump when you cannot follow suit.' };
+  if (leadSuit && state.currentTrick.cards.length > 0 && !playerHasLeadSuit && playerHasTrump && state.mustPlayTrumpPlayerId === playerId && card.suit !== state.trumpSuit) {
+    return { valid: false, reason: 'You must play trump after revealing it.' };
   }
 
   return {
